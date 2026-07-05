@@ -1,3 +1,10 @@
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="urllib3 v2 only supports OpenSSL 1.1.1+",
+    category=Warning,
+)
+
 import wikipedia # https://wikipedia.readthedocs.io/en/latest/code.html#api
 import json
 import sqlite3

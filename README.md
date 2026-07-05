@@ -1,15 +1,16 @@
 # Engineering Assessment Notes
 
-This repository was updated to address the highest-value issues in the assessment first, then to complete two of the lower-risk minor improvements.
+This repository was updated to address the highest-value issues in the assessment first, then to complete three of the lower-risk minor improvements.
 
 ## Summary
 
-The work completed in this exercise focused on four areas:
+The work completed in this exercise focused on five areas:
 
 1. Fixing biased page selection and removing the accidental overuse of `Python (programming language)`.
 2. Fixing pathfinding correctness issues so returned paths are valid and unreachable cases fail cleanly.
 3. Improving meta-category filtering and expanding regression coverage.
 4. Adding targeted type hints and type-hint regression coverage.
+5. Suppressing the reproducible runtime warning noise in the local environment.
 
 ## Changelog
 
@@ -70,6 +71,13 @@ The work completed in this exercise focused on four areas:
 - Covered public function annotations in both `main.py` and `wiki.py`.
 - Covered the key helper/cache function annotations in `wiki.py`.
 
+### 8. Warning suppression
+
+- Investigated the warning TODO by reproducing runtime fetches through both `wiki.get_page()` and the underlying `wikipedia` library.
+- Determined that the reproducible warning in this environment was not an HTML parser warning, but a local `urllib3` / `LibreSSL` warning.
+- Added a narrow, early warning filter in `wiki.py` so this specific warning no longer pollutes test and runtime output.
+- Preserved the rest of the warning surface instead of globally muting unrelated warnings.
+
 ## Files Updated
 
 - `main.py`
@@ -90,13 +98,12 @@ python3 -m pytest
 Latest result:
 
 - `19 passed`
-- `1 warning`
+- `0 warnings`
 
-The remaining warning is an environment-level `urllib3` / `LibreSSL` warning from the local Python installation, not an application test failure.
+The latest suite run completed cleanly with no warnings.
 
 ## Remaining Work
 
 Minor TODOs not yet implemented include:
 
-- targeted warning suppression for the assessment's parser-warning case, if reproducible
 - any additional cache-layer cleanup beyond the current per-search improvements
