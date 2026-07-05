@@ -111,6 +111,15 @@ TEST_PAGES = {
         "links": ["Target Node", "All (disambiguation)"],
         "categories": [],
         "summary": "An unrelated node connected only to the target node."
+    },
+    "Filtering Source": {
+        "links": ["Apple", "Template:Stub", "Help:Contents", "Filtering Source"],
+        "categories": [
+            "Fruit",
+            "Short description is different from Wikidata",
+            "Wikipedia articles needing cleanup",
+        ],
+        "summary": "A page used to verify category and link filtering behavior."
     }
 }
 
@@ -154,6 +163,28 @@ def test_get_page_search(mock_wikipedia_library):
         mock_search.return_value = ["Apple"]
         page = wiki.get_page("Appl")
         assert page.title == "Apple"
+
+def test_is_regular_page_allows_thematic_categories():
+    assert wiki.is_regular_page("Fruit") is True
+    assert wiki.is_regular_page("Blue Things") is True
+
+def test_is_regular_page_filters_meta_categories():
+    assert wiki.is_regular_page("Short description is different from Wikidata") is False
+    assert wiki.is_regular_page("Wikipedia articles needing cleanup") is False
+    assert wiki.is_regular_page("Template:Stub") is False
+    assert wiki.is_regular_page("Help:Contents") is False
+    assert wiki.is_regular_page("User:Example") is False
+
+def test_get_page_links_with_cache_filters_meta_categories(mock_wikipedia_library):
+    links = wiki.get_page_links_with_cache("Filtering Source")
+
+    assert "Apple" in links
+    assert "Fruit" in links
+    assert "Template:Stub" not in links
+    assert "Help:Contents" not in links
+    assert "Short description is different from Wikidata" not in links
+    assert "Wikipedia articles needing cleanup" not in links
+    assert "Filtering Source" not in links
 
 def test_link_through_categories(mock_wikipedia_library):
     start_page = wiki.get_page("Blueberry")

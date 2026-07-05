@@ -77,12 +77,21 @@ def _load_page_links(page_name, page_cache, link_cache):
     return filtered
 
 def is_regular_page(page_name):
-    if "disambiguation" in page_name: return False
-    if "automatic" in page_name: return False
-    if "article" in page_name: return False
-    if "page" in page_name: return False
-    if "identifier" in page_name: return False
-    return True
+    normalized_name = page_name.lower()
+    meta_patterns = [
+        "disambiguation",
+        "automatic",
+        "article",
+        "page",
+        "identifier",
+        "wikidata",
+        "wikipedia",
+        "short description",
+        "template:",
+        "help:",
+        "user:",
+    ]
+    return not any(pattern in normalized_name for pattern in meta_patterns)
 
 # TODO: Gotta speed this up. It's OK if we don't get the shortest path, but we should get *a* path.
 # TODO: Add a timeout to the search. 10 seconds?
