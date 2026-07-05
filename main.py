@@ -6,9 +6,11 @@ import spacy
 from typing import Any, List, Optional
 
 MAX_DESTINATION_LOOKUP_ATTEMPTS = 3
+MAX_RANDOM_PAGE_ATTEMPTS = 25
 
 def get_random_page(common_words: List[str]) -> Any:
-    for _ in range(len(common_words)):
+    attempts = min(len(common_words), MAX_RANDOM_PAGE_ATTEMPTS)
+    for _ in range(attempts):
         page = get_page(random.choice(common_words))
         if page is not None:
             return page
@@ -24,6 +26,17 @@ def print_path_result(label: str, path: Optional[List[str]]) -> int:
     print(f"\n -> ".join(path))
     print(f"Length: {len(path)}\n")
     return len(path)
+
+
+def get_page_summary(page: Any, max_length: int = 500) -> str:
+    try:
+        summary = page.summary
+    except Exception:
+        return "Summary unavailable."
+
+    if not summary:
+        return "Summary unavailable."
+    return f"{summary[:max_length]}..."
 
 
 def normalize_page_input(user_input: str) -> str:
@@ -66,15 +79,24 @@ def main() -> None:
     hard_mode = input().strip().lower() == "h"
 
     while True:
+        try:
+            start_page = get_random_page(common_words)
+            computer_page = get_random_page(common_words)
+        except LookupError:
+            print("Could not find valid random pages right now. Please try again.\n")
+            print("\n\nPlay again? Hit Enter for another round, or type 'q' to quit")
+            cmd = input()
+            if cmd == "q":
+                print("\n🥓 Thanks for playing! 🥓\n")
+                print("WikiBacon is not affiliated with Wikipedia or the Wikimedia Foundation. To donate to Wikipedia and support their vision of an open internet that makes games like this possible, please visit https://donate.wikimedia.org/\n")
+                return
+            continue
 
-        start_page = get_random_page(common_words)
         print(f"The starting page is: {start_page.title}\n")
-        print(f"Summary: {start_page.summary[:500]}...\n")
-
-        computer_page = get_random_page(common_words)
+        print(f"Summary: {get_page_summary(start_page)}\n")
 
         print(f"The computer's page is: {computer_page.title}\n")
-        print(f"Summary: {computer_page.summary[:500]}...\n")
+        print(f"Summary: {get_page_summary(computer_page)}\n")
 
         user_page = prompt_for_user_page()
         if user_page is None:
@@ -86,7 +108,7 @@ def main() -> None:
                 return
             continue
         print(f"Your page is: {user_page.title}\n")
-        print(f"Summary: {user_page.summary[:500]}...\n")
+        print(f"Summary: {get_page_summary(user_page)}\n")
 
         print("Calculating Bacon paths...\n")
 

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from main import main, normalize_page_input
+from main import main, normalize_page_input, get_page_summary, get_random_page, MAX_RANDOM_PAGE_ATTEMPTS
 
 @pytest.fixture
 def mock_wiki_functions():
@@ -178,3 +178,44 @@ def test_main_hard_mode_passes_flag(mock_wiki_functions, mock_input):
     second_call = mock_wiki_functions['find_short_path'].call_args_list[1]
     assert first_call.args[-1] is True
     assert second_call.args[-1] is True
+
+
+def test_get_page_summary_handles_exceptions():
+    class BrokenSummaryPage:
+        @property
+        def summary(self):
+            raise RuntimeError("summary unavailable")
+
+    assert get_page_summary(BrokenSummaryPage()) == "Summary unavailable."
+
+
+def test_main_handles_summary_fetch_failures(mock_input, capsys):
+    class BrokenSummaryPage:
+        title = "Broken Page"
+
+        @property
+        def summary(self):
+            raise RuntimeError("summary unavailable")
+
+    class ValidPage:
+        title = "Valid Page"
+        summary = "Valid summary"
+
+    mock_input.side_effect = ['', '', 'Ocean', 'q']
+
+    with patch('main.get_random_page', side_effect=[BrokenSummaryPage(), BrokenSummaryPage()]), \
+         patch('main.get_page', return_value=ValidPage()), \
+         patch('main.find_short_path', side_effect=[None, None]):
+        main()
+
+    output = capsys.readouterr().out
+    assert "Summary unavailable." in output
+
+
+def test_get_random_page_limits_attempts():
+    with patch('main.get_page', return_value=None) as mock_get_page, \
+         patch('main.random.choice', return_value='missing-word'):
+        with pytest.raises(LookupError):
+            get_random_page(['missing-word'] * 1000)
+
+    assert mock_get_page.call_count == MAX_RANDOM_PAGE_ATTEMPTS

@@ -592,3 +592,29 @@ def test_get_page_links_with_cache_handles_edge_fetch_json_errors(monkeypatch):
     links = wiki.get_page_links_with_cache("Problematic Page")
 
     assert links == []
+
+
+def test_patched_wiki_request_sets_http_timeout(monkeypatch):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"query": {"pages": {}}}
+
+    captured = {}
+
+    def fake_get(url, params, headers, timeout):
+        captured["url"] = url
+        captured["params"] = params
+        captured["headers"] = headers
+        captured["timeout"] = timeout
+        return mock_response
+
+    monkeypatch.setattr(wiki.wikipedia_impl, "RATE_LIMIT", False)
+    monkeypatch.setattr(wiki.wikipedia_impl.requests, "get", fake_get)
+
+    result = wiki.wikipedia_impl._wiki_request({"titles": "Nintendo Switch 2"})
+
+    assert result == {"query": {"pages": {}}}
+    assert captured["url"] == wiki.wikipedia_impl.API_URL
+    assert captured["params"]["format"] == "json"
+    assert captured["params"]["action"] == "query"
+    assert captured["timeout"] == wiki.WIKIPEDIA_HTTP_TIMEOUT_SECONDS

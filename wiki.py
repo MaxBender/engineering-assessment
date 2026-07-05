@@ -16,6 +16,7 @@ import wikipedia # https://wikipedia.readthedocs.io/en/latest/code.html#api
 import wikipedia.wikipedia as wikipedia_impl
 from wikipedia.exceptions import DisambiguationError, PageError, RedirectError, WikipediaException
 import json
+import re
 import sqlite3
 import spacy
 import time
@@ -30,13 +31,55 @@ def _patched_beautiful_soup(markup: str, *args: Any, **kwargs: Any) -> Beautiful
     return BeautifulSoup(markup, *args, **kwargs)
 
 
+def _patched_wiki_request(params: Dict[str, Any]) -> Dict[str, Any]:
+    request_params = dict(params)
+    request_params["format"] = "json"
+    if "action" not in request_params:
+        request_params["action"] = "query"
+
+    headers = {
+        "User-Agent": wikipedia_impl.USER_AGENT,
+    }
+
+    if (
+        wikipedia_impl.RATE_LIMIT
+        and wikipedia_impl.RATE_LIMIT_LAST_CALL
+        and wikipedia_impl.RATE_LIMIT_LAST_CALL + wikipedia_impl.RATE_LIMIT_MIN_WAIT > wikipedia_impl.datetime.now()
+    ):
+        wait_time = (wikipedia_impl.RATE_LIMIT_LAST_CALL + wikipedia_impl.RATE_LIMIT_MIN_WAIT) - wikipedia_impl.datetime.now()
+        wikipedia_impl.time.sleep(int(wait_time.total_seconds()))
+
+    try:
+        response = wikipedia_impl.requests.get(
+            wikipedia_impl.API_URL,
+            params=request_params,
+            headers=headers,
+            timeout=WIKIPEDIA_HTTP_TIMEOUT_SECONDS,
+        )
+    except RequestException:
+        return {}
+
+    if wikipedia_impl.RATE_LIMIT:
+        wikipedia_impl.RATE_LIMIT_LAST_CALL = wikipedia_impl.datetime.now()
+
+    if response.status_code >= 400:
+        return {}
+
+    try:
+        return response.json()
+    except (ValueError, json.JSONDecodeError):
+        return {}
+
+
 wikipedia_impl.BeautifulSoup = _patched_beautiful_soup
+wikipedia_impl._wiki_request = _patched_wiki_request
 
 MAX_PATH_LENGTH = 20
 MAX_SEARCH_STEPS = 300
 MAX_BRANCHES_PER_PAGE = 8
 EXPLORATORY_BRANCHES_PER_PAGE = 1
-PATHFINDING_TIMEOUT_SECONDS = 8.0
+WIKIPEDIA_HTTP_TIMEOUT_SECONDS = 2.0
+PATHFINDING_TIMEOUT_SECONDS = 4.0
 CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_PERSISTENT_CACHE_ROWS = 1000
 CACHE_CLEANUP_WRITE_INTERVAL = 25
@@ -44,6 +87,8 @@ MAX_LINK_CACHE_SIZE = 256
 MAX_EMBEDDING_CACHE_SIZE = 512
 CACHE_DB_PATH = "pages.db"
 MAX_PAGE_LOOKUP_CANDIDATES = 3
+MAX_EDGE_LINKS_PER_PAGE = 50
+MAX_EDGE_CATEGORIES_PER_PAGE = 30
 
 Page = Any
 Embedding = Any
@@ -63,13 +108,61 @@ def encode_text(text: str) -> Embedding:
 
 
 def _get_page_edges(page: Page) -> Optional[Dict[str, List[str]]]:
-    try:
+    page_data = getattr(page, "__dict__", {})
+    page_links = page_data.get("links")
+    page_categories = page_data.get("categories")
+    if isinstance(page_links, list) and isinstance(page_categories, list):
         return {
-            "links": list(page.links),
-            "categories": list(page.categories),
+            "links": page_links,
+            "categories": page_categories,
         }
+
+    page_title = getattr(page, "title", None)
+    if not page_title:
+        return None
+
+    try:
+        return _fetch_page_edges_from_api(page_title)
     except (PageError, DisambiguationError, RedirectError, WikipediaException, RequestException, KeyError, ValueError, json.JSONDecodeError):
         return None
+
+
+def _first_page_data(response: Dict[str, Any]) -> Dict[str, Any]:
+    query = response.get("query", {})
+    pages = query.get("pages", {})
+    if not pages:
+        return {}
+    return next(iter(pages.values()))
+
+
+def _fetch_page_edges_from_api(page_title: str) -> Dict[str, List[str]]:
+    links_response = wikipedia_impl._wiki_request(
+        {
+            "prop": "links",
+            "plnamespace": 0,
+            "pllimit": MAX_EDGE_LINKS_PER_PAGE,
+            "titles": page_title,
+        }
+    )
+    links_page = _first_page_data(links_response)
+    links = [item.get("title", "") for item in links_page.get("links", [])]
+    links = [link for link in links if link]
+
+    categories_response = wikipedia_impl._wiki_request(
+        {
+            "prop": "categories",
+            "cllimit": MAX_EDGE_CATEGORIES_PER_PAGE,
+            "titles": page_title,
+        }
+    )
+    categories_page = _first_page_data(categories_response)
+    categories = [item.get("title", "") for item in categories_page.get("categories", [])]
+    categories = [re.sub(r"^Category:", "", category) for category in categories if category]
+
+    return {
+        "links": links,
+        "categories": categories,
+    }
 
 
 def _current_timestamp() -> int:
