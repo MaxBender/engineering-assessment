@@ -186,13 +186,20 @@ def test_get_page_links_with_cache_filters_meta_categories(mock_wikipedia_librar
     assert "Wikipedia articles needing cleanup" not in links
     assert "Filtering Source" not in links
 
+def test_get_page_links_with_cache_can_ignore_categories(mock_wikipedia_library):
+    links = wiki.get_page_links_with_cache("Filtering Source", ignore_categories=True)
+
+    assert "Apple" in links
+    assert "Fruit" not in links
+    assert "Short description is different from Wikidata" not in links
+
 def test_get_page_links_with_cache_uses_supplied_caches(mock_wikipedia_library):
     page_cache = {}
     link_cache = {}
 
     links = wiki.get_page_links_with_cache("Filtering Source", page_cache, link_cache)
 
-    assert link_cache["Filtering Source"] == links
+    assert link_cache[("Filtering Source", False)] == links
     if "Filtering Source" in page_cache:
         assert page_cache["Filtering Source"].title == "Filtering Source"
 
@@ -226,6 +233,14 @@ def test_link_through_categories(mock_wikipedia_library):
     path = wiki.find_short_path(start_page, end_page)
     # Finds the path through the "Blue Things" category
     assert path == ["Blueberry", "Blue Things", "Ocean"]
+    assert_valid_path(path)
+
+def test_hard_mode_ignores_category_shortcuts(mock_wikipedia_library):
+    start_page = wiki.get_page("Blueberry")
+    end_page = wiki.get_page("Ocean")
+    path = wiki.find_short_path(start_page, end_page, ignore_categories=True)
+
+    assert path == ["Blueberry", "Apple", "Apple Computer", "Netflix", "Stream", "River", "Ocean"]
     assert_valid_path(path)
 
 def test_do_not_link_through_meta_pages(mock_wikipedia_library):

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WikiBacon CLI Screenshots</title>
+  <style>
+    :root {
+      --bg: #f2efe8;
+      --panel: #171717;
+      --panel-top: #242424;
+      --text: #efe8d8;
+      --muted: #c7bea9;
+      --accent: #ffb347;
+      --green: #7fd27f;
+      --shadow: rgba(33, 24, 12, 0.18);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 48px 32px 80px;
+      background:
+        radial-gradient(circle at top left, rgba(255, 179, 71, 0.22), transparent 24%),
+        radial-gradient(circle at bottom right, rgba(255, 210, 127, 0.2), transparent 28%),
+        linear-gradient(180deg, #f7f2e8 0%, var(--bg) 100%);
+      color: #2d2114;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .wrap {
+      max-width: 1320px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 44px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .intro {
+      margin: 0 0 36px;
+      max-width: 820px;
+      font-size: 18px;
+      line-height: 1.6;
+      color: #4f3a26;
+    }
+
+    .grid {
+      display: grid;
+      gap: 28px;
+    }
+
+    .shot {
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px var(--shadow);
+      border: 1px solid rgba(73, 51, 30, 0.1);
+      background: #fff9ee;
+    }
+
+    .caption {
+      padding: 18px 22px;
+      border-bottom: 1px solid rgba(73, 51, 30, 0.08);
+      background: rgba(255, 250, 239, 0.94);
+    }
+
+    .caption h2 {
+      margin: 0 0 6px;
+      font-size: 26px;
+      font-weight: 700;
+    }
+
+    .caption p {
+      margin: 0;
+      color: #5f4833;
+      line-height: 1.5;
+    }
+
+    .terminal {
+      background: linear-gradient(180deg, var(--panel-top) 0%, var(--panel) 100%);
+      color: var(--text);
+      padding: 0;
+    }
+
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      font-family: Helvetica, Arial, sans-serif;
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .dots {
+      display: flex;
+      gap: 8px;
+      margin-right: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+    }
+
+    .red { background: #ff5f57; }
+    .yellow { background: #febc2e; }
+    .green { background: #28c840; }
+
+    pre {
+      margin: 0;
+      padding: 24px 28px 30px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 16px/1.55 Menlo, Monaco, Consolas, "Courier New", monospace;
+    }
+
+    .accent { color: var(--accent); }
+    .success { color: var(--green); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>WikiBacon CLI Preview</h1>
+    <p class="intro">Deterministic demo runs of the terminal game, styled for README screenshots. The first shows the default category-aware mode. The second shows hard mode, where category shortcuts are ignored and the computed path gets longer.</p>
+
+    <div class="grid">
+      <section class="shot" id="normal-shot">
+        <div class="caption">
+          <h2>Normal mode</h2>
+          <p>The default run keeps category links enabled and finds a shorter path through <strong>Fruit</strong> and <strong>Water</strong>.</p>
+        </div>
+        <div class="terminal">
+          <div class="bar">
+            <div class="dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            wikibacon • terminal demo
+          </div>
+          <pre><span class="accent">🥓 Welcome to WikiBacon! 🥓</span>
+
+In this game, we start from a random Wikipedia page, and then we compete to see who can name a page that is <span class="accent">*farthest away*</span> from the original page.
+
+Ready to play? Hit Enter to start, or type 'q' to quit
+Enable hard mode? Type 'h' to ignore category links, or press Enter for normal mode
+The starting page is: <span class="success">Banana</span>
+
+Summary: A long curved fruit that grows in clusters and is used here as a stable demo starting page....
+
+The computer's page is: <span class="success">Ocean</span>
+
+Summary: A vast body of salt water that covers most of the Earth and makes a nice contrasting destination....
+
+What would you like your page to be page?
+Your page is: <span class="success">Blue whale</span>
+
+Summary: The blue whale is the largest animal known to have ever existed, which makes it a fun player-selected page....
+
+Calculating Bacon paths...
+
+Computer's path:
+Banana
+ -&gt; Fruit
+ -&gt; Water
+ -&gt; Ocean
+Length: 4
+
+Your path:
+Banana
+ -&gt; Mammal
+ -&gt; Blue whale
+Length: 3
+
+<span class="accent">I win!</span>
+
+Play again? Hit Enter for another round, or type 'q' to quit</pre>
+        </div>
+      </section>
+
+      <section class="shot" id="hard-shot">
+        <div class="caption">
+          <h2>Hard mode</h2>
+          <p>Hard mode ignores category edges, so the computer path has to follow a longer link-only route.</p>
+        </div>
+        <div class="terminal">
+          <div class="bar">
+            <div class="dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            wikibacon • hard mode demo
+          </div>
+          <pre><span class="accent">🥓 Welcome to WikiBacon! 🥓</span>
+
+In this game, we start from a random Wikipedia page, and then we compete to see who can name a page that is <span class="accent">*farthest away*</span> from the original page.
+
+Ready to play? Hit Enter to start, or type 'q' to quit
+Enable hard mode? Type 'h' to ignore category links, or press Enter for normal mode
+The starting page is: <span class="success">Banana</span>
+
+Summary: A long curved fruit that grows in clusters and is used here as a stable demo starting page....
+
+The computer's page is: <span class="success">Ocean</span>
+
+Summary: A vast body of salt water that covers most of the Earth and makes a nice contrasting destination....
+
+What would you like your page to be page?
+Your page is: <span class="success">Blue whale</span>
+
+Summary: The blue whale is the largest animal known to have ever existed, which makes it a fun player-selected page....
+
+Calculating Bacon paths...
+
+Computer's path:
+Banana
+ -&gt; Yellow
+ -&gt; Peel
+ -&gt; Sea
+ -&gt; Ocean
+Length: 5
+
+Your path:
+Banana
+ -&gt; Animal
+ -&gt; Blue whale
+Length: 3
+
+<span class="accent">I win!</span>
+
+Play again? Hit Enter for another round, or type 'q' to quit</pre>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

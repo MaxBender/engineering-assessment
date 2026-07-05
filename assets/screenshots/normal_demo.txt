@@ -1,0 +1,45 @@
+
+
+🥓 Welcome to WikiBacon! 🥓
+
+In this game, we start from a random Wikipedia page, and then we compete to see who can name a page that is *farthest away* from the original page.
+
+Ready to play? Hit Enter to start, or type 'q' to quit
+Enable hard mode? Type 'h' to ignore category links, or press Enter for normal mode
+The starting page is: Banana
+
+Summary: A long curved fruit that grows in clusters and is used here as a stable demo starting page....
+
+The computer's page is: Ocean
+
+Summary: A vast body of salt water that covers most of the Earth and makes a nice contrasting destination....
+
+What would you like your page to be page?
+Your page is: Blue whale
+
+Summary: The blue whale is the largest animal known to have ever existed, which makes it a fun player-selected page....
+
+Calculating Bacon paths...
+
+Computer's path:
+Banana
+ -> Fruit
+ -> Water
+ -> Ocean
+Length: 4
+
+Your path:
+Banana
+ -> Mammal
+ -> Blue whale
+Length: 3
+
+I win!
+
+
+Play again? Hit Enter for another round, or type 'q' to quit
+
+🥓 Thanks for playing! 🥓
+
+WikiBacon is not affiliated with Wikipedia or the Wikimedia Foundation. To donate to Wikipedia and support their vision of an open internet that makes games like this possible, please visit https://donate.wikimedia.org/
+

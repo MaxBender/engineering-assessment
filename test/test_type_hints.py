@@ -23,6 +23,8 @@ def test_main_function_type_hints():
 
 
 def test_wiki_public_function_type_hints():
+    link_cache = Dict[Tuple[str, bool], List[str]]
+
     get_page_hints = get_type_hints(wiki.get_page)
     assert get_page_hints == {
         "page_name": str,
@@ -33,7 +35,8 @@ def test_wiki_public_function_type_hints():
     assert links_hints == {
         "page_name": str,
         "page_cache": Optional[Dict[str, Optional[Any]]],
-        "link_cache": Optional[Dict[str, List[str]]],
+        "link_cache": Optional[link_cache],
+        "ignore_categories": bool,
         "return": List[str],
     }
 
@@ -48,15 +51,16 @@ def test_wiki_public_function_type_hints():
         "start_page": Any,
         "end_page": Any,
         "page_cache": Optional[Dict[str, Optional[Any]]],
-        "link_cache": Optional[Dict[str, List[str]]],
+        "link_cache": Optional[link_cache],
         "embedding_cache": Optional[Dict[Tuple[str, str], Optional[Any]]],
+        "ignore_categories": bool,
         "return": Optional[List[str]],
     }
 
 
 def test_wiki_helper_type_hints():
     page_cache = Dict[str, Optional[Any]]
-    link_cache = Dict[str, List[str]]
+    link_cache = Dict[Tuple[str, bool], List[str]]
     embedding_cache = Dict[Tuple[str, str], Optional[Any]]
 
     cached_page_hints = get_type_hints(wiki._get_page_cached)
@@ -71,6 +75,7 @@ def test_wiki_helper_type_hints():
         "page_name": str,
         "page_cache": page_cache,
         "link_cache": link_cache,
+        "ignore_categories": bool,
         "return": List[str],
     }
 
@@ -105,5 +110,6 @@ def test_wiki_helper_type_hints():
         "page_cache": page_cache,
         "link_cache": link_cache,
         "embedding_cache": embedding_cache,
+        "ignore_categories": bool,
         "return": Optional[List[str]],
     }

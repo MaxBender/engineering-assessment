@@ -36,7 +36,7 @@ MAX_BRANCHES_PER_PAGE = 5
 Page = Any
 Embedding = Any
 PageCache = Dict[str, Optional[Page]]
-LinkCache = Dict[str, List[str]]
+LinkCache = Dict[Tuple[str, bool], List[str]]
 EmbeddingCache = Dict[Tuple[str, str], Optional[Embedding]]
 
 # Load spacy model once at module level
@@ -53,6 +53,34 @@ def encode_text(text: str) -> Embedding:
     """Encode text using spacy's sentence vectors"""
     doc = nlp(text)
     return doc.vector.reshape(1, -1)
+
+
+def _serialize_page_edges(page: Page) -> str:
+    return json.dumps({
+        "links": page.links,
+        "categories": page.categories,
+    })
+
+
+def _get_cached_page_edges(page_name: str, cached_value: str, page_cache: PageCache) -> Dict[str, List[str]]:
+    parsed_value = json.loads(cached_value)
+    if isinstance(parsed_value, dict):
+        return {
+            "links": parsed_value.get("links", []),
+            "categories": parsed_value.get("categories", []),
+        }
+
+    page = _get_page_cached(page_name, page_cache)
+    if page is None:
+        return {
+            "links": parsed_value,
+            "categories": [],
+        }
+
+    return {
+        "links": page.links,
+        "categories": page.categories,
+    }
 
 # TODO: Returns the Python page too often.
 def get_page(page_name: str) -> Optional[Page]:
@@ -75,21 +103,23 @@ def get_page_links_with_cache(
     page_name: str,
     page_cache: Optional[PageCache] = None,
     link_cache: Optional[LinkCache] = None,
+    ignore_categories: bool = False,
 ) -> List[str]:
     if page_cache is None:
         page_cache = {}
     if link_cache is None:
         link_cache = {}
-    return _load_page_links(page_name, page_cache, link_cache)
+    return _load_page_links(page_name, page_cache, link_cache, ignore_categories)
 
 def _get_page_cached(page_name: str, page_cache: PageCache) -> Optional[Page]:
     if page_name not in page_cache:
         page_cache[page_name] = get_page(page_name)
     return page_cache[page_name]
 
-def _load_page_links(page_name: str, page_cache: PageCache, link_cache: LinkCache) -> List[str]:
-    if page_name in link_cache:
-        return link_cache[page_name]
+def _load_page_links(page_name: str, page_cache: PageCache, link_cache: LinkCache, ignore_categories: bool) -> List[str]:
+    cache_key = (page_name, ignore_categories)
+    if cache_key in link_cache:
+        return link_cache[cache_key]
 
     conn = sqlite3.connect("pages.db")
     cursor = conn.cursor()
@@ -99,21 +129,27 @@ def _load_page_links(page_name: str, page_cache: PageCache, link_cache: LinkCach
         page = _get_page_cached(page_name, page_cache)
         if page is None:
             conn.close()
-            link_cache[page_name] = []
+            link_cache[cache_key] = []
             return []
-        links = page.links
-        categories = page.categories
-        cursor.execute("INSERT INTO pages (name, links) VALUES (?, ?)", (page_name, json.dumps(links + categories)))
+        cursor.execute("INSERT INTO pages (name, links) VALUES (?, ?)", (page_name, _serialize_page_edges(page)))
         conn.commit()
         cached_page = cursor.execute("SELECT * FROM pages WHERE name = ?", (page_name,)).fetchone()
 
+    edge_data = _get_cached_page_edges(page_name, cached_page[1], page_cache)
+    if not isinstance(json.loads(cached_page[1]), dict):
+        cursor.execute("UPDATE pages SET links = ? WHERE name = ?", (_serialize_page_edges(_get_page_cached(page_name, page_cache)), page_name))
+        conn.commit()
+
     conn.close()
 
-    links = json.loads(cached_page[1])
+    links = edge_data["links"]
+    if not ignore_categories:
+        links = links + edge_data["categories"]
+
     filtered = [link for link in links if is_regular_page(link)]
     if page_name in filtered:
         filtered.remove(page_name)
-    link_cache[page_name] = filtered
+    link_cache[cache_key] = filtered
     return filtered
 
 def is_regular_page(page_name: str) -> bool:
@@ -163,6 +199,7 @@ def _find_short_path(
     page_cache: PageCache,
     link_cache: LinkCache,
     embedding_cache: EmbeddingCache,
+    ignore_categories: bool,
 ) -> Optional[List[str]]:
     """Find a valid path using a bounded greedy best-first search."""
 
@@ -186,7 +223,7 @@ def _find_short_path(
             steps += 1
             continue
 
-        links = _load_page_links(current_page, page_cache, link_cache)
+        links = _load_page_links(current_page, page_cache, link_cache, ignore_categories)
         if end_page_name in links:
             return path + [end_page_name]
 
@@ -214,6 +251,7 @@ def find_short_path(
     page_cache: Optional[PageCache] = None,
     link_cache: Optional[LinkCache] = None,
     embedding_cache: Optional[EmbeddingCache] = None,
+    ignore_categories: bool = False,
 ) -> Optional[List[str]]:
     if page_cache is None:
         page_cache = {}
@@ -224,4 +262,4 @@ def find_short_path(
     if embedding_cache is None:
         embedding_cache = {}
 
-    return _find_short_path(start_page.title, end_page.title, page_cache, link_cache, embedding_cache)
+    return _find_short_path(start_page.title, end_page.title, page_cache, link_cache, embedding_cache, ignore_categories)

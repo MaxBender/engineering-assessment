@@ -32,17 +32,16 @@ def mock_input():
 def test_main_single_round(mock_wiki_functions, mock_input):
     """Test main function for a single round"""
     # Set up input to play one round then exit
-    mock_input.side_effect = ['', 'Ocean', 'q']
+    mock_input.side_effect = ['', '', 'Ocean', 'q']
     
     main()
     
-    # Verify input was called twice
-    assert mock_input.call_count == 3
+    assert mock_input.call_count == 4
 
 def test_main_multiple_rounds(mock_wiki_functions, mock_input):
     """Test main function with custom input sequence"""
     # Simulate user entering different pages
-    mock_input.side_effect = ['', 'Mountain', '', 'River', '', 'Plain', 'q']
+    mock_input.side_effect = ['', '', 'Mountain', '', 'River', '', 'Plain', 'q']
     
     main()
     
@@ -51,7 +50,7 @@ def test_main_multiple_rounds(mock_wiki_functions, mock_input):
     # page name, play again (yes), 
     # page name, play again (yes), 
     # page name, play again (no)
-    assert mock_input.call_count == 7
+    assert mock_input.call_count == 8
 
 def test_stop_q(mock_wiki_functions, mock_input):
     """Test that main function handles different input types"""
@@ -60,12 +59,12 @@ def test_stop_q(mock_wiki_functions, mock_input):
     
     for test_input in test_inputs:
         mock_input.reset_mock()
-        mock_input.side_effect = ['','Forest', test_input, 'Utopia', 'n']
+        mock_input.side_effect = ['', '', 'Forest', test_input, 'Utopia', 'n']
         
         # Should not raise any exceptions
         main()
         
-        assert mock_input.call_count == 3
+        assert mock_input.call_count == 4
 
 def test_main_retries_invalid_random_pages(mock_wiki_functions, mock_input):
     """Test that main retries random words until they resolve to pages."""
@@ -85,7 +84,7 @@ def test_main_retries_invalid_random_pages(mock_wiki_functions, mock_input):
         user_page,
     ]
 
-    mock_input.side_effect = ['', 'Ocean', 'q']
+    mock_input.side_effect = ['', '', 'Ocean', 'q']
 
     with patch('main.random.choice', side_effect=['bad-start', 'good-start', 'bad-computer', 'good-computer']):
         main()
@@ -97,7 +96,7 @@ def test_main_retries_invalid_random_pages(mock_wiki_functions, mock_input):
 
 def test_main_does_not_seed_random(mock_wiki_functions, mock_input):
     """Test that the game does not force deterministic random choices."""
-    mock_input.side_effect = ['', 'Ocean', 'q']
+    mock_input.side_effect = ['', '', 'Ocean', 'q']
 
     with patch('main.random.seed') as mock_seed, \
          patch('main.random.choice', side_effect=['start-word', 'computer-word']):
@@ -107,7 +106,7 @@ def test_main_does_not_seed_random(mock_wiki_functions, mock_input):
 
 def test_main_handles_missing_paths(mock_wiki_functions, mock_input, capsys):
     """Test that the game handles missing paths without crashing."""
-    mock_input.side_effect = ['', 'Ocean', 'q']
+    mock_input.side_effect = ['', '', 'Ocean', 'q']
     mock_wiki_functions['find_short_path'].side_effect = [None, ['Start', 'End']]
 
     main()
@@ -118,7 +117,7 @@ def test_main_handles_missing_paths(mock_wiki_functions, mock_input, capsys):
 
 def test_main_handles_invalid_user_page(mock_wiki_functions, mock_input, capsys):
     """Test that invalid user pages do not crash the game."""
-    mock_input.side_effect = ['', 'NotARealPage', 'q']
+    mock_input.side_effect = ['', '', 'NotARealPage', 'q']
     mock_wiki_functions['get_page'].side_effect = [
         mock_wiki_functions['get_page'].return_value,
         mock_wiki_functions['get_page'].return_value,
@@ -129,3 +128,14 @@ def test_main_handles_invalid_user_page(mock_wiki_functions, mock_input, capsys)
 
     output = capsys.readouterr().out
     assert "Could not find a page for that input." in output
+
+def test_main_hard_mode_passes_flag(mock_wiki_functions, mock_input):
+    """Test that hard mode selection is passed through to both path searches."""
+    mock_input.side_effect = ['', 'h', 'Ocean', 'q']
+
+    main()
+
+    first_call = mock_wiki_functions['find_short_path'].call_args_list[0]
+    second_call = mock_wiki_functions['find_short_path'].call_args_list[1]
+    assert first_call.args[-1] is True
+    assert second_call.args[-1] is True

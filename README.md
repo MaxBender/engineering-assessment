@@ -4,7 +4,7 @@ This repository was updated to address the highest-value issues in the assessmen
 
 ## Summary
 
-The work completed in this exercise focused on seven areas:
+The work completed in this exercise focused on eight areas:
 
 1. Fixing biased page selection and removing the accidental overuse of `Python (programming language)`.
 2. Fixing pathfinding correctness issues so returned paths are valid and unreachable cases fail cleanly.
@@ -13,6 +13,20 @@ The work completed in this exercise focused on seven areas:
 5. Eliminating the reproducible runtime warning noise in the local environment.
 6. Improving cache reuse across both path searches in a round.
 7. Reproducing and patching the third-party HTML parser warning path.
+8. Adding an optional category-less hard mode.
+
+## Screenshots
+
+These deterministic demo captures show the CLI in both default mode and hard mode.
+They were generated from stable mocked runs so the README does not depend on live Wikipedia responses or random page selection.
+
+### Normal mode
+
+![WikiBacon normal mode screenshot](assets/screenshots/wikibacon-normal-mode.png)
+
+### Hard mode
+
+![WikiBacon hard mode screenshot](assets/screenshots/wikibacon-hard-mode.png)
 
 ## Changelog
 
@@ -100,6 +114,27 @@ The work completed in this exercise focused on seven areas:
 - Added tests that verify repeated searches can reuse supplied caches without changing path correctness.
 - Updated the type-hint regression coverage so the cache-aware public signatures remain locked in.
 
+### 12. Category-less hard mode
+
+- Added an opt-in hard mode that ignores category links during pathfinding while preserving the existing default mode.
+- Refactored cached page-edge storage so links and categories can be distinguished instead of always being merged together.
+- Extended `get_page_links_with_cache()` and `find_short_path()` with an `ignore_categories` flag.
+- Updated `main.py` to prompt once at startup for hard mode and to apply the same rule set to both the computer and player searches.
+- Kept default behavior unchanged when hard mode is not enabled.
+
+### 13. Hard mode regression coverage
+
+- Added tests showing that normal mode still uses category shortcuts where appropriate.
+- Added tests showing that hard mode removes category shortcuts and falls back to link-only traversal.
+- Added a main-loop test to verify the hard-mode selection is passed through to both pathfinding calls.
+- Updated the type-hint regression coverage to include the new hard-mode-aware function signatures.
+
+### 14. README screenshots
+
+- Added deterministic CLI screenshots for both normal mode and hard mode.
+- Added a small HTML gallery source used to render terminal-styled screenshot assets for the README.
+- Stored the mocked demo transcripts alongside the screenshot assets so the documentation artifacts are reproducible.
+
 ## Files Updated
 
 - `main.py`
@@ -108,6 +143,11 @@ The work completed in this exercise focused on seven areas:
 - `test/diagnostic_html_parser_warning.py`
 - `test/test_main.py`
 - `test/test_wiki.py`
+- `assets/screenshots/normal_demo.txt`
+- `assets/screenshots/hard_mode_demo.txt`
+- `assets/screenshots/readme_gallery.html`
+- `assets/screenshots/wikibacon-normal-mode.png`
+- `assets/screenshots/wikibacon-hard-mode.png`
 - `README.md`
 
 ## Validation
@@ -120,7 +160,7 @@ python3 -m pytest
 
 Latest result:
 
-- `21 passed`
+- `24 passed`
 - `0 warnings`
 
 The latest suite run completed cleanly with no warnings.
@@ -130,4 +170,3 @@ The latest suite run completed cleanly with no warnings.
 Optional follow-up work could include:
 
 - additional cache-layer cleanup beyond the current per-search improvements
-- a hard mode that ignores categories entirely, if that game variant is still desired

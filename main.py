@@ -34,6 +34,9 @@ def main() -> None:
     with open("dictionary.txt", "r") as f:
         common_words = f.read().splitlines()
 
+    print("Enable hard mode? Type 'h' to ignore category links, or press Enter for normal mode")
+    hard_mode = input().strip().lower() == "h"
+
     while True:
 
         start_page = get_random_page(common_words)
@@ -70,10 +73,10 @@ def main() -> None:
         link_cache = {}
         embedding_cache = {}
 
-        computer_path = find_short_path(start_page, computer_page, page_cache, link_cache, embedding_cache)
+        computer_path = find_short_path(start_page, computer_page, page_cache, link_cache, embedding_cache, hard_mode)
         computer_score = print_path_result("Computer's path", computer_path)
 
-        user_path = find_short_path(start_page, user_page, page_cache, link_cache, embedding_cache)
+        user_path = find_short_path(start_page, user_page, page_cache, link_cache, embedding_cache, hard_mode)
         user_score = print_path_result("Your path", user_path)
 
         if computer_score > user_score:
