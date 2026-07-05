@@ -4,7 +4,7 @@ This repository was updated to address the highest-value issues in the assessmen
 
 ## Summary
 
-The work completed in this exercise focused on eight areas:
+The work completed in this exercise focused on nine areas:
 
 1. Fixing biased page selection and removing the accidental overuse of `Python (programming language)`.
 2. Fixing pathfinding correctness issues so returned paths are valid and unreachable cases fail cleanly.
@@ -14,6 +14,7 @@ The work completed in this exercise focused on eight areas:
 6. Improving cache reuse across both path searches in a round.
 7. Reproducing and patching the third-party HTML parser warning path.
 8. Adding an optional category-less hard mode.
+9. Adding metadata-driven persistent cache cleanup and bounded cache growth.
 
 ## Screenshots
 
@@ -135,6 +136,16 @@ They were generated from stable mocked runs so the README does not depend on liv
 - Added a small HTML gallery source used to render terminal-styled screenshot assets for the README.
 - Stored the mocked demo transcripts alongside the screenshot assets so the documentation artifacts are reproducible.
 
+### 15. Cache cleanup and lifecycle management
+
+- Extended the SQLite cache in `wiki.py` so page rows now track freshness and recency metadata with `updated_at` and `last_accessed_at`.
+- Defined explicit default cache policy values in `wiki.py`: a 7-day TTL for persistent rows, a 1000-row persistent cache cap, cleanup every 25 cache writes, a 256-entry link-cache cap, and a 512-entry embedding-cache cap.
+- Added backward-compatible schema bootstrap logic so existing `pages.db` files are upgraded in place instead of requiring a manual reset.
+- Added stale-cache refresh behavior that re-fetches expired rows when possible and safely falls back to cached data if a live refresh fails.
+- Added opportunistic persistent-cache pruning so expired rows are deleted and oversized caches are trimmed by least-recently-used access time.
+- Added bounded trimming for the in-memory link and embedding caches so long-running searches cannot grow those dictionaries without limit.
+- Added deterministic regression coverage for schema migration, stale-row refresh, stale-row fallback, persistent pruning, and bounded in-memory cache behavior.
+
 ## Files Updated
 
 - `main.py`
@@ -160,7 +171,7 @@ python3 -m pytest
 
 Latest result:
 
-- `24 passed`
+- `30 passed`
 - `0 warnings`
 
 The latest suite run completed cleanly with no warnings.
@@ -169,4 +180,5 @@ The latest suite run completed cleanly with no warnings.
 
 Optional follow-up work could include:
 
-- additional cache-layer cleanup beyond the current per-search improvements
+- additional tuning of the default cache policy values, currently a 7-day TTL, 1000 persistent rows, cleanup every 25 writes, 256 link-cache entries, and 512 embedding-cache entries, based on real-world usage
+- batching or throttling `last_accessed_at` writes further if cache read volume becomes high enough to justify it

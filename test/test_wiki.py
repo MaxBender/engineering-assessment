@@ -1,3 +1,5 @@
+import json
+import sqlite3
 import pytest
 from unittest.mock import patch, MagicMock
 import wiki
@@ -130,6 +132,21 @@ def assert_valid_path(path):
         valid_transitions = current_data["links"] + current_data["categories"]
         assert next_page in valid_transitions
 
+
+@pytest.fixture(autouse=True)
+def isolated_cache_db(tmp_path, monkeypatch):
+    monkeypatch.setattr(wiki, "CACHE_DB_PATH", str(tmp_path / "pages.db"))
+    monkeypatch.setattr(wiki, "_cache_writes_since_cleanup", 0)
+
+
+def fetch_cache_rows():
+    conn = sqlite3.connect(wiki.CACHE_DB_PATH)
+    rows = conn.execute(
+        "SELECT name, links, updated_at, last_accessed_at FROM pages ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return rows
+
 @pytest.fixture
 def mock_wikipedia_library():
     """Fixture to mock both get_page and get_page_links_with_cache"""
@@ -206,6 +223,155 @@ def test_get_page_links_with_cache_uses_supplied_caches(mock_wikipedia_library):
     second_links = wiki.get_page_links_with_cache("Filtering Source", page_cache, link_cache)
     assert second_links == links
     assert len(link_cache) == 1
+
+
+def test_cache_schema_bootstrap_migrates_existing_database(mock_wikipedia_library):
+    conn = sqlite3.connect(wiki.CACHE_DB_PATH)
+    conn.execute("CREATE TABLE pages (name TEXT, links TEXT)")
+    conn.execute(
+        "INSERT INTO pages (name, links) VALUES (?, ?)",
+        ("Filtering Source", json.dumps(TEST_PAGES["Filtering Source"]["links"])),
+    )
+    conn.commit()
+    conn.close()
+
+    links = wiki.get_page_links_with_cache("Filtering Source")
+
+    conn = sqlite3.connect(wiki.CACHE_DB_PATH)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(pages)").fetchall()}
+    row = conn.execute(
+        "SELECT links, updated_at, last_accessed_at FROM pages WHERE name = ?",
+        ("Filtering Source",),
+    ).fetchone()
+    conn.close()
+
+    assert "Fruit" in links
+    assert {"updated_at", "last_accessed_at"}.issubset(columns)
+    assert json.loads(row[0]) == {
+        "links": TEST_PAGES["Filtering Source"]["links"],
+        "categories": TEST_PAGES["Filtering Source"]["categories"],
+    }
+    assert row[1] is not None
+    assert row[2] is not None
+
+
+def test_stale_cache_entry_refreshes_before_use(mock_wikipedia_library, monkeypatch):
+    now = 10_000
+    monkeypatch.setattr(wiki, "CACHE_TTL_SECONDS", 60)
+    monkeypatch.setattr(wiki, "_current_timestamp", lambda: now)
+
+    conn = wiki._get_db_connection()
+    conn.execute(
+        """
+        INSERT INTO pages (name, links, updated_at, last_accessed_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        ("Blueberry", json.dumps({"links": ["Apple"], "categories": []}), now - 600, now - 600),
+    )
+    conn.commit()
+    conn.close()
+
+    links = wiki.get_page_links_with_cache("Blueberry")
+    rows = fetch_cache_rows()
+    blueberry_row = next(row for row in rows if row[0] == "Blueberry")
+
+    assert "Blue Things" in links
+    assert json.loads(blueberry_row[1]) == {
+        "links": TEST_PAGES["Blueberry"]["links"],
+        "categories": TEST_PAGES["Blueberry"]["categories"],
+    }
+    assert blueberry_row[2] == now
+    assert blueberry_row[3] == now
+
+
+def test_stale_cache_entry_falls_back_to_cached_edges_when_refresh_fails(monkeypatch):
+    now = 20_000
+    monkeypatch.setattr(wiki, "CACHE_TTL_SECONDS", 60)
+    monkeypatch.setattr(wiki, "_current_timestamp", lambda: now)
+
+    conn = wiki._get_db_connection()
+    conn.execute(
+        """
+        INSERT INTO pages (name, links, updated_at, last_accessed_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            "Filtering Source",
+            json.dumps({"links": ["Apple", "Template:Stub"], "categories": ["Fruit"]}),
+            now - 600,
+            now - 600,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    with patch.object(wiki, "get_page", return_value=None):
+        links = wiki.get_page_links_with_cache("Filtering Source")
+
+    rows = fetch_cache_rows()
+    filtering_row = next(row for row in rows if row[0] == "Filtering Source")
+
+    assert links == ["Apple", "Fruit"]
+    assert json.loads(filtering_row[1]) == {
+        "links": ["Apple", "Template:Stub"],
+        "categories": ["Fruit"],
+    }
+    assert filtering_row[2] == now - 600
+    assert filtering_row[3] == now
+
+
+def test_cleanup_prunes_oldest_persistent_rows(monkeypatch):
+    now = 50_000
+    monkeypatch.setattr(wiki, "CACHE_TTL_SECONDS", 10_000)
+    monkeypatch.setattr(wiki, "MAX_PERSISTENT_CACHE_ROWS", 2)
+    monkeypatch.setattr(wiki, "_current_timestamp", lambda: now)
+
+    conn = wiki._get_db_connection()
+    for name, last_accessed_at in [("Apple", 100), ("Blueberry", 200), ("Ocean", 300), ("River", 400)]:
+        conn.execute(
+            """
+            INSERT INTO pages (name, links, updated_at, last_accessed_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, json.dumps({"links": ["Stream"], "categories": []}), now, last_accessed_at),
+        )
+    conn.commit()
+    conn.close()
+
+    removed_rows = wiki._cleanup_persistent_cache()
+    remaining_names = [row[0] for row in fetch_cache_rows()]
+
+    assert removed_rows == 2
+    assert remaining_names == ["Ocean", "River"]
+
+
+def test_link_cache_is_trimmed_to_max_size(mock_wikipedia_library, monkeypatch):
+    monkeypatch.setattr(wiki, "MAX_LINK_CACHE_SIZE", 2)
+
+    link_cache = {}
+    wiki.get_page_links_with_cache("Blueberry", link_cache=link_cache)
+    wiki.get_page_links_with_cache("Apple", link_cache=link_cache)
+    wiki.get_page_links_with_cache("Ocean", link_cache=link_cache)
+
+    assert len(link_cache) == 2
+    assert ("Blueberry", False) not in link_cache
+    assert ("Apple", False) in link_cache
+    assert ("Ocean", False) in link_cache
+
+
+def test_embedding_cache_is_trimmed_to_max_size(monkeypatch):
+    monkeypatch.setattr(wiki, "MAX_EMBEDDING_CACHE_SIZE", 2)
+
+    embedding_cache = {}
+    with patch.object(wiki, "encode_text", side_effect=lambda text: text):
+        wiki._get_title_embedding("Apple", embedding_cache)
+        wiki._get_title_embedding("Blueberry", embedding_cache)
+        wiki._get_title_embedding("Ocean", embedding_cache)
+
+    assert len(embedding_cache) == 2
+    assert ("title", "Apple") not in embedding_cache
+    assert ("title", "Blueberry") in embedding_cache
+    assert ("title", "Ocean") in embedding_cache
 
 def test_find_short_path_reuses_supplied_caches(mock_wikipedia_library):
     start_page = wiki.get_page("Blueberry")
