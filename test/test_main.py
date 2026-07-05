@@ -104,3 +104,14 @@ def test_main_does_not_seed_random(mock_wiki_functions, mock_input):
         main()
 
     mock_seed.assert_not_called()
+
+def test_main_handles_missing_paths(mock_wiki_functions, mock_input, capsys):
+    """Test that the game handles missing paths without crashing."""
+    mock_input.side_effect = ['', 'Ocean', 'q']
+    mock_wiki_functions['find_short_path'].side_effect = [None, ['Start', 'End']]
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "No path found." in output
+    assert "Length: 0" in output

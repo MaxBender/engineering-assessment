@@ -86,8 +86,40 @@ TEST_PAGES = {
         "links": ["Apple", "All (disambiguation)"],
         "categories": [],
         "summary": "Python is a programming language."
+    },
+    "Start Node": {
+        "links": ["Bridge Node", "All (disambiguation)"],
+        "categories": [],
+        "summary": "A starting point that only points to a bridge node."
+    },
+    "Bridge Node": {
+        "links": ["Detour Node", "All (disambiguation)"],
+        "categories": [],
+        "summary": "A bridge node that does not actually lead to the target page."
+    },
+    "Detour Node": {
+        "links": ["Bridge Node", "All (disambiguation)"],
+        "categories": [],
+        "summary": "A detour node that cycles away from the target."
+    },
+    "Target Node": {
+        "links": ["Elsewhere Node", "All (disambiguation)"],
+        "categories": ["Bridge Node"],
+        "summary": "A target node whose category mentions the bridge node without a valid reverse edge."
+    },
+    "Elsewhere Node": {
+        "links": ["Target Node", "All (disambiguation)"],
+        "categories": [],
+        "summary": "An unrelated node connected only to the target node."
     }
 }
+
+def assert_valid_path(path):
+    assert path is not None
+    for current_page, next_page in zip(path, path[1:]):
+        current_data = TEST_PAGES[current_page]
+        valid_transitions = current_data["links"] + current_data["categories"]
+        assert next_page in valid_transitions
 
 @pytest.fixture
 def mock_wikipedia_library():
@@ -129,15 +161,13 @@ def test_link_through_categories(mock_wikipedia_library):
     path = wiki.find_short_path(start_page, end_page)
     # Finds the path through the "Blue Things" category
     assert path == ["Blueberry", "Blue Things", "Ocean"]
+    assert_valid_path(path)
 
 def test_do_not_link_through_meta_pages(mock_wikipedia_library):
     start_page = wiki.get_page("Apple")
     end_page = wiki.get_page("Orphan (graph theory)")
-    try:
-        path = wiki.find_short_path(start_page, end_page)
-        assert "find_short_path should throw an error" == None
-    except Exception as e:
-        pass
+    path = wiki.find_short_path(start_page, end_page)
+    assert path is None
 
 def test_greedy_search(mock_wikipedia_library):
     start_page = wiki.get_page("Blueberry")
@@ -146,3 +176,12 @@ def test_greedy_search(mock_wikipedia_library):
     print(path)
     # Doesn't find the shortcut through the Warp Pipes, because it's greedy
     assert path == ["Blueberry", "Apple", "Apple Computer", "Netflix", "Bridgerton"]
+    assert_valid_path(path)
+
+def test_do_not_return_invalid_intersection_path(mock_wikipedia_library):
+    start_page = wiki.get_page("Start Node")
+    end_page = wiki.get_page("Target Node")
+
+    path = wiki.find_short_path(start_page, end_page)
+
+    assert path is None

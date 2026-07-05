@@ -11,6 +11,17 @@ def get_random_page(common_words):
             return page
     raise LookupError("Could not find a valid random Wikipedia page")
 
+def print_path_result(label, path):
+    print(f"{label}:")
+    if path is None:
+        print("No path found.")
+        print("Length: 0\n")
+        return 0
+
+    print(f"\n -> ".join(path))
+    print(f"Length: {len(path)}\n")
+    return len(path)
+
 def main():
     print("\n\n🥓 Welcome to WikiBacon! 🥓\n")
     print("In this game, we start from a random Wikipedia page, and then we compete to see who can name a page that is *farthest away* from the original page.\n")
@@ -42,18 +53,14 @@ def main():
         print("Calculating Bacon paths...\n")
 
         computer_path = find_short_path(start_page, computer_page)
-        print("Computer's path:")
-        print(f"\n -> ".join(computer_path))
-        print(f"Length: {len(computer_path)}\n")
+        computer_score = print_path_result("Computer's path", computer_path)
 
         user_path = find_short_path(start_page, user_page)
-        print("Your path:")
-        print(f"\n -> ".join(user_path))
-        print(f"Length: {len(user_path)}\n")
+        user_score = print_path_result("Your path", user_path)
 
-        if len(computer_path) > len(user_path):
+        if computer_score > user_score:
             print("I win!")
-        elif len(computer_path) < len(user_path):
+        elif computer_score < user_score:
             print("You win!")
         else:
             print("It's a tie!")
