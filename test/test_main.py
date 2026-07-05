@@ -94,3 +94,13 @@ def test_main_retries_invalid_random_pages(mock_wiki_functions, mock_input):
     assert mock_wiki_functions['get_page'].call_args_list[1].args == ('good-start',)
     assert mock_wiki_functions['get_page'].call_args_list[2].args == ('bad-computer',)
     assert mock_wiki_functions['get_page'].call_args_list[3].args == ('good-computer',)
+
+def test_main_does_not_seed_random(mock_wiki_functions, mock_input):
+    """Test that the game does not force deterministic random choices."""
+    mock_input.side_effect = ['', 'Ocean', 'q']
+
+    with patch('main.random.seed') as mock_seed, \
+         patch('main.random.choice', side_effect=['start-word', 'computer-word']):
+        main()
+
+    mock_seed.assert_not_called()
