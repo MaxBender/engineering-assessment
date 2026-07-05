@@ -47,6 +47,15 @@ def main():
         print("What would you like your page to be page?")
         user_page_name = input()
         user_page = get_page(user_page_name)
+        if user_page is None:
+            print("Could not find a page for that input.\n")
+            print("\n\nPlay again? Hit Enter for another round, or type 'q' to quit")
+            cmd = input()
+            if cmd == "q":
+                print("\n🥓 Thanks for playing! 🥓\n")
+                print("WikiBacon is not affiliated with Wikipedia or the Wikimedia Foundation. To donate to Wikipedia and support their vision of an open internet that makes games like this possible, please visit https://donate.wikimedia.org/\n")
+                return
+            continue
         print(f"Your page is: {user_page.title}\n")
         print(f"Summary: {user_page.summary[:500]}...\n")
 

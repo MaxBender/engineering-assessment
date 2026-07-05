@@ -115,3 +115,17 @@ def test_main_handles_missing_paths(mock_wiki_functions, mock_input, capsys):
     output = capsys.readouterr().out
     assert "No path found." in output
     assert "Length: 0" in output
+
+def test_main_handles_invalid_user_page(mock_wiki_functions, mock_input, capsys):
+    """Test that invalid user pages do not crash the game."""
+    mock_input.side_effect = ['', 'NotARealPage', 'q']
+    mock_wiki_functions['get_page'].side_effect = [
+        mock_wiki_functions['get_page'].return_value,
+        mock_wiki_functions['get_page'].return_value,
+        None,
+    ]
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Could not find a page for that input." in output
