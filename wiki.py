@@ -3,10 +3,17 @@ import json
 import sqlite3
 import spacy
 from sklearn.metrics.pairwise import cosine_similarity
+from typing import Any, Dict, List, Optional, Tuple
 
 MAX_PATH_LENGTH = 20
 MAX_SEARCH_STEPS = 100
 MAX_BRANCHES_PER_PAGE = 5
+
+Page = Any
+Embedding = Any
+PageCache = Dict[str, Optional[Page]]
+LinkCache = Dict[str, List[str]]
+EmbeddingCache = Dict[Tuple[str, str], Optional[Embedding]]
 
 # Load spacy model once at module level
 nlp = spacy.load("en_core_web_sm")
@@ -17,13 +24,13 @@ cursor = conn.cursor()
 cursor.execute("CREATE TABLE IF NOT EXISTS pages (name TEXT, links TEXT)")
 conn.commit()
 
-def encode_text(text):
+def encode_text(text: str) -> Embedding:
     """Encode text using spacy's sentence vectors"""
     doc = nlp(text)
     return doc.vector.reshape(1, -1)
 
 # TODO: Returns the Python page too often.
-def get_page(page_name):
+def get_page(page_name: str) -> Optional[Page]:
     """Get a specific Wikipedia page by name"""
     try:
         return wikipedia.page(page_name, auto_suggest=False, redirect=False)
@@ -39,15 +46,15 @@ def get_page(page_name):
     except:
         return None
 
-def get_page_links_with_cache(page_name):
+def get_page_links_with_cache(page_name: str) -> List[str]:
     return _load_page_links(page_name, {}, {})
 
-def _get_page_cached(page_name, page_cache):
+def _get_page_cached(page_name: str, page_cache: PageCache) -> Optional[Page]:
     if page_name not in page_cache:
         page_cache[page_name] = get_page(page_name)
     return page_cache[page_name]
 
-def _load_page_links(page_name, page_cache, link_cache):
+def _load_page_links(page_name: str, page_cache: PageCache, link_cache: LinkCache) -> List[str]:
     if page_name in link_cache:
         return link_cache[page_name]
 
@@ -76,7 +83,7 @@ def _load_page_links(page_name, page_cache, link_cache):
     link_cache[page_name] = filtered
     return filtered
 
-def is_regular_page(page_name):
+def is_regular_page(page_name: str) -> bool:
     normalized_name = page_name.lower()
     meta_patterns = [
         "disambiguation",
@@ -95,7 +102,7 @@ def is_regular_page(page_name):
 
 # TODO: Gotta speed this up. It's OK if we don't get the shortest path, but we should get *a* path.
 # TODO: Add a timeout to the search. 10 seconds?
-def _get_summary_embedding(page_name, page_cache, embedding_cache):
+def _get_summary_embedding(page_name: str, page_cache: PageCache, embedding_cache: EmbeddingCache) -> Optional[Embedding]:
     cache_key = ("summary", page_name)
     if cache_key not in embedding_cache:
         page = _get_page_cached(page_name, page_cache)
@@ -105,19 +112,25 @@ def _get_summary_embedding(page_name, page_cache, embedding_cache):
             embedding_cache[cache_key] = encode_text(page.summary)
     return embedding_cache[cache_key]
 
-def _get_title_embedding(page_name, embedding_cache):
+def _get_title_embedding(page_name: str, embedding_cache: EmbeddingCache) -> Embedding:
     cache_key = ("title", page_name)
     if cache_key not in embedding_cache:
         embedding_cache[cache_key] = encode_text(page_name)
     return embedding_cache[cache_key]
 
-def _score_candidate(page_name, target_embedding, page_cache, embedding_cache):
+def _score_candidate(page_name: str, target_embedding: Optional[Embedding], page_cache: PageCache, embedding_cache: EmbeddingCache) -> float:
     candidate_embedding = _get_title_embedding(page_name, embedding_cache)
     if candidate_embedding is None or target_embedding is None:
         return float("-inf")
     return cosine_similarity(candidate_embedding, target_embedding)[0][0]
 
-def _find_short_path(start_page_name, end_page_name, page_cache, link_cache, embedding_cache):
+def _find_short_path(
+    start_page_name: str,
+    end_page_name: str,
+    page_cache: PageCache,
+    link_cache: LinkCache,
+    embedding_cache: EmbeddingCache,
+) -> Optional[List[str]]:
     """Find a valid path using a bounded greedy best-first search."""
 
     if start_page_name == end_page_name:
@@ -127,7 +140,7 @@ def _find_short_path(start_page_name, end_page_name, page_cache, link_cache, emb
     if target_embedding is None:
         return None
 
-    frontier = [(0.0, [start_page_name])]
+    frontier: List[Tuple[float, List[str]]] = [(0.0, [start_page_name])]
     visited = {start_page_name}
     steps = 0
 
@@ -144,7 +157,7 @@ def _find_short_path(start_page_name, end_page_name, page_cache, link_cache, emb
         if end_page_name in links:
             return path + [end_page_name]
 
-        scored_candidates = []
+        scored_candidates: List[Tuple[float, List[str]]] = []
         for link in links:
             if link in visited or link in path:
                 continue
@@ -162,7 +175,7 @@ def _find_short_path(start_page_name, end_page_name, page_cache, link_cache, emb
     return None
 
 
-def find_short_path(start_page,  end_page):
+def find_short_path(start_page: Page, end_page: Page) -> Optional[List[str]]:
     page_cache = {
         start_page.title: start_page,
         end_page.title: end_page,

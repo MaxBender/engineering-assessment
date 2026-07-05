@@ -3,15 +3,16 @@ import random
 import warnings
 import nltk
 import spacy
+from typing import Any, List, Optional
 
-def get_random_page(common_words):
+def get_random_page(common_words: List[str]) -> Any:
     for _ in range(len(common_words)):
         page = get_page(random.choice(common_words))
         if page is not None:
             return page
     raise LookupError("Could not find a valid random Wikipedia page")
 
-def print_path_result(label, path):
+def print_path_result(label: str, path: Optional[List[str]]) -> int:
     print(f"{label}:")
     if path is None:
         print("No path found.")
@@ -22,7 +23,7 @@ def print_path_result(label, path):
     print(f"Length: {len(path)}\n")
     return len(path)
 
-def main():
+def main() -> None:
     print("\n\n🥓 Welcome to WikiBacon! 🥓\n")
     print("In this game, we start from a random Wikipedia page, and then we compete to see who can name a page that is *farthest away* from the original page.\n")
     print("Ready to play? Hit Enter to start, or type 'q' to quit")

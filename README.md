@@ -1,14 +1,15 @@
 # Engineering Assessment Notes
 
-This repository was updated to address the highest-value issues in the assessment first, then to pick off one of the lower-risk minor improvements.
+This repository was updated to address the highest-value issues in the assessment first, then to complete two of the lower-risk minor improvements.
 
 ## Summary
 
-The work completed in this exercise focused on three areas:
+The work completed in this exercise focused on four areas:
 
 1. Fixing biased page selection and removing the accidental overuse of `Python (programming language)`.
 2. Fixing pathfinding correctness issues so returned paths are valid and unreachable cases fail cleanly.
 3. Improving meta-category filtering and expanding regression coverage.
+4. Adding targeted type hints and type-hint regression coverage.
 
 ## Changelog
 
@@ -55,12 +56,28 @@ The work completed in this exercise focused on three areas:
 - Added unreachable-path and invalid-intersection regressions for pathfinding.
 - Added helper and integration tests for the expanded filtering behavior.
 
+### 6. Type-hinting improvements
+
+- Added pragmatic standard-library type hints to the public functions in `main.py` and `wiki.py`.
+- Added explicit helper annotations for the pathfinding and cache helpers in `wiki.py`.
+- Introduced readable cache aliases for page, link, and embedding dictionaries in `wiki.py`.
+- Kept the annotations aligned with the actual runtime contracts established by the tests, including unresolved pages and missing paths.
+
+### 7. Type-hint regression coverage
+
+- Added a dedicated `test/test_type_hints.py` module.
+- Added regression tests that inspect type annotations with `typing.get_type_hints()`.
+- Covered public function annotations in both `main.py` and `wiki.py`.
+- Covered the key helper/cache function annotations in `wiki.py`.
+
 ## Files Updated
 
 - `main.py`
 - `wiki.py`
+- `test/test_type_hints.py`
 - `test/test_main.py`
 - `test/test_wiki.py`
+- `README.md`
 
 ## Validation
 
@@ -72,7 +89,7 @@ python3 -m pytest
 
 Latest result:
 
-- `16 passed`
+- `19 passed`
 - `1 warning`
 
 The remaining warning is an environment-level `urllib3` / `LibreSSL` warning from the local Python installation, not an application test failure.
@@ -82,5 +99,4 @@ The remaining warning is an environment-level `urllib3` / `LibreSSL` warning fro
 Minor TODOs not yet implemented include:
 
 - targeted warning suppression for the assessment's parser-warning case, if reproducible
-- type hinting across the codebase
 - any additional cache-layer cleanup beyond the current per-search improvements
