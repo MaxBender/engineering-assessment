@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
 import pytest
 from unittest.mock import patch, MagicMock
 import wiki
@@ -180,6 +181,34 @@ def test_get_page_search(mock_wikipedia_library):
         mock_search.return_value = ["Apple"]
         page = wiki.get_page("Appl")
         assert page.title == "Apple"
+
+
+def test_get_page_empty_or_whitespace_input_returns_none():
+    with patch('wikipedia.page') as mock_page, patch('wikipedia.search') as mock_search:
+        assert wiki.get_page("") is None
+        assert wiki.get_page("   \t  ") is None
+
+    mock_page.assert_not_called()
+    mock_search.assert_not_called()
+
+
+def test_get_page_normalizes_input_before_lookup(mock_wikipedia_library):
+    with patch('wikipedia.page') as mock_page:
+        mock_page.side_effect = lambda page_name, **kwargs: MagicMock(title=page_name, summary="", links=[], categories=[])
+        page = wiki.get_page("  Apple   ")
+
+    assert page.title == "Apple"
+    first_call = mock_page.call_args_list[0]
+    assert first_call.args[0] == "Apple"
+
+
+def test_get_page_search_tries_multiple_candidates(mock_wikipedia_library):
+    with patch('wikipedia.search') as mock_search:
+        mock_search.return_value = ["Missing Candidate", "Apple"]
+
+        page = wiki.get_page("Appl")
+
+    assert page.title == "Apple"
 
 def test_is_regular_page_allows_thematic_categories():
     assert wiki.is_regular_page("Fruit") is True
@@ -420,11 +449,10 @@ def test_greedy_search(mock_wikipedia_library):
     end_page = wiki.get_page("Bridgerton")
     path = wiki.find_short_path(start_page, end_page)
     print(path)
-    # Greedy + bounded exploration may choose different valid routes,
-    # but it should still connect source and destination.
     assert path is not None
     assert path[0] == "Blueberry"
     assert path[-1] == "Bridgerton"
+    # The greedy search may change route as scoring improves, but paths must remain valid.
     assert_valid_path(path)
 
 def test_do_not_return_invalid_intersection_path(mock_wikipedia_library):
@@ -434,3 +462,159 @@ def test_do_not_return_invalid_intersection_path(mock_wikipedia_library):
     path = wiki.find_short_path(start_page, end_page)
 
     assert path is None
+
+
+def test_find_short_path_with_reason_reports_frontier_exhausted(monkeypatch):
+    monkeypatch.setattr(wiki, "MAX_SEARCH_STEPS", 5)
+    monkeypatch.setattr(wiki, "MAX_PATH_LENGTH", 5)
+    monkeypatch.setattr(wiki, "_get_summary_embedding", lambda *args, **kwargs: "target")
+    monkeypatch.setattr(wiki, "_get_title_embedding", lambda *args, **kwargs: "target")
+    monkeypatch.setattr(wiki, "_score_candidate", lambda *args, **kwargs: 0.0)
+    monkeypatch.setattr(
+        wiki,
+        "_load_page_links",
+        lambda page_name, page_cache, link_cache, ignore_categories: {
+            "Start": [],
+        }.get(page_name, []),
+    )
+
+    path, reason = wiki._find_short_path_with_reason("Start", "Goal", {}, {}, {}, False)
+
+    assert path is None
+    assert reason == "frontier_exhausted"
+
+
+def test_find_short_path_with_reason_reports_step_budget_exhausted(monkeypatch):
+    monkeypatch.setattr(wiki, "MAX_SEARCH_STEPS", 1)
+    monkeypatch.setattr(wiki, "MAX_PATH_LENGTH", 10)
+    monkeypatch.setattr(wiki, "_get_summary_embedding", lambda *args, **kwargs: "target")
+    monkeypatch.setattr(wiki, "_get_title_embedding", lambda *args, **kwargs: "target")
+    monkeypatch.setattr(wiki, "_score_candidate", lambda *args, **kwargs: 0.0)
+    monkeypatch.setattr(
+        wiki,
+        "_load_page_links",
+        lambda page_name, page_cache, link_cache, ignore_categories: {
+            "Start": ["A"],
+            "A": ["Goal"],
+        }.get(page_name, []),
+    )
+
+    path, reason = wiki._find_short_path_with_reason("Start", "Goal", {}, {}, {}, False)
+
+    assert path is None
+    assert reason == "step_budget_exhausted"
+
+
+def test_find_short_path_with_reason_reports_time_budget_exhausted(monkeypatch):
+    monkeypatch.setattr(wiki, "PATHFINDING_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(wiki, "MAX_SEARCH_STEPS", 50)
+    monkeypatch.setattr(wiki, "MAX_PATH_LENGTH", 10)
+    monkeypatch.setattr(wiki, "_get_summary_embedding", lambda *args, **kwargs: "target")
+    monkeypatch.setattr(wiki, "_get_title_embedding", lambda *args, **kwargs: "target")
+    monkeypatch.setattr(wiki, "_score_candidate", lambda *args, **kwargs: 0.5)
+    monkeypatch.setattr(
+        wiki,
+        "_load_page_links",
+        lambda page_name, page_cache, link_cache, ignore_categories: ["A", "B", "C"],
+    )
+
+    monotonic_times = iter([0.0, 0.02])
+    monkeypatch.setattr(wiki.time, "monotonic", lambda: next(monotonic_times))
+
+    path, reason = wiki._find_short_path_with_reason("Start", "Goal", {}, {}, {}, False)
+
+    assert path is None
+    assert reason == "time_budget_exhausted"
+
+
+def test_find_short_path_with_reason_explores_lower_ranked_bridge(monkeypatch):
+    monkeypatch.setattr(wiki, "MAX_SEARCH_STEPS", 10)
+    monkeypatch.setattr(wiki, "MAX_PATH_LENGTH", 10)
+    monkeypatch.setattr(wiki, "MAX_BRANCHES_PER_PAGE", 1)
+    monkeypatch.setattr(wiki, "EXPLORATORY_BRANCHES_PER_PAGE", 1)
+    monkeypatch.setattr(wiki, "_get_summary_embedding", lambda *args, **kwargs: "target")
+    monkeypatch.setattr(wiki, "_get_title_embedding", lambda *args, **kwargs: "target")
+
+    score_map = {
+        "Trap": 0.9,
+        "Dead": 0.8,
+        "Bridge": 0.1,
+    }
+    monkeypatch.setattr(
+        wiki,
+        "_score_candidate",
+        lambda page_name, target_embedding, page_cache, embedding_cache: score_map.get(page_name, 0.0),
+    )
+    monkeypatch.setattr(
+        wiki,
+        "_load_page_links",
+        lambda page_name, page_cache, link_cache, ignore_categories: {
+            "Start": ["Trap", "Bridge"],
+            "Trap": ["Dead"],
+            "Dead": [],
+            "Bridge": ["Goal"],
+        }.get(page_name, []),
+    )
+
+    path, reason = wiki._find_short_path_with_reason("Start", "Goal", {}, {}, {}, False)
+
+    assert path == ["Start", "Bridge", "Goal"]
+    assert reason == "found_path"
+
+
+def test_get_summary_embedding_handles_summary_fetch_json_errors(monkeypatch):
+    class BadSummaryPage:
+        @property
+        def summary(self):
+            raise RequestsJSONDecodeError("Expecting value", "", 0)
+
+    monkeypatch.setattr(wiki, "_get_page_cached", lambda page_name, page_cache: BadSummaryPage())
+
+    embedding_cache = {}
+    result = wiki._get_summary_embedding("Problematic Page", {}, embedding_cache)
+
+    assert result is None
+    assert embedding_cache[("summary", "Problematic Page")] is None
+
+
+def test_get_page_links_with_cache_handles_edge_fetch_json_errors(monkeypatch):
+    class BadEdgesPage:
+        @property
+        def links(self):
+            raise RequestsJSONDecodeError("Expecting value", "", 0)
+
+        @property
+        def categories(self):
+            raise RequestsJSONDecodeError("Expecting value", "", 0)
+
+    monkeypatch.setattr(wiki, "_get_page_cached", lambda page_name, page_cache: BadEdgesPage())
+
+    links = wiki.get_page_links_with_cache("Problematic Page")
+
+    assert links == []
+
+
+def test_patched_wiki_request_sets_http_timeout(monkeypatch):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"query": {"pages": {}}}
+
+    captured = {}
+
+    def fake_get(url, params, headers, timeout):
+        captured["url"] = url
+        captured["params"] = params
+        captured["headers"] = headers
+        captured["timeout"] = timeout
+        return mock_response
+
+    monkeypatch.setattr(wiki.wikipedia_impl, "RATE_LIMIT", False)
+    monkeypatch.setattr(wiki.wikipedia_impl.requests, "get", fake_get)
+
+    result = wiki.wikipedia_impl._wiki_request({"titles": "Nintendo Switch 2"})
+
+    assert result == {"query": {"pages": {}}}
+    assert captured["url"] == wiki.wikipedia_impl.API_URL
+    assert captured["params"]["format"] == "json"
+    assert captured["params"]["action"] == "query"
+    assert captured["timeout"] == wiki.WIKIPEDIA_HTTP_TIMEOUT_SECONDS

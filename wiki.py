@@ -444,7 +444,6 @@ def get_page(page_name: str) -> Optional[Page]:
     """Get a specific Wikipedia page by name"""
     if _simulation_enabled():
         return _get_simulated_page(page_name)
-
     normalized_query = " ".join(page_name.strip().split())
     if not normalized_query:
         return None
