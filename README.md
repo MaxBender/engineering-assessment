@@ -4,7 +4,7 @@ This repository was updated to address the highest-value issues in the assessmen
 
 ## Summary
 
-The work completed in this exercise focused on nine areas:
+The work completed in this exercise focused on ten areas:
 
 1. Fixing biased page selection and removing the accidental overuse of `Python (programming language)`.
 2. Fixing pathfinding correctness issues so returned paths are valid and unreachable cases fail cleanly.
@@ -15,6 +15,7 @@ The work completed in this exercise focused on nine areas:
 7. Reproducing and patching the third-party HTML parser warning path.
 8. Adding an optional category-less hard mode.
 9. Adding metadata-driven persistent cache cleanup and bounded cache growth.
+10. Hardening runtime behavior to avoid hangs and transient Wikipedia API crashes.
 
 ## Screenshots
 
@@ -146,6 +147,16 @@ They were generated from stable mocked runs so the README does not depend on liv
 - Added bounded trimming for the in-memory link and embedding caches so long-running searches cannot grow those dictionaries without limit.
 - Added deterministic regression coverage for schema migration, stale-row refresh, stale-row fallback, persistent pruning, and bounded in-memory cache behavior.
 
+### 16. Runtime reliability and anti-hang hardening
+
+- Added bounded pathfinding wall-clock control in `wiki.py` with `PATHFINDING_TIMEOUT_SECONDS = 4.0` so difficult page pairs terminate predictably instead of appearing stuck.
+- Patched the underlying `wikipedia` request path used by the app to enforce per-request HTTP timeout (`WIKIPEDIA_HTTP_TIMEOUT_SECONDS = 2.0`) and to fail closed on transient network/rate-limit/JSON failures.
+- Hardened edge extraction so transient failures while reading page links/categories no longer crash search; unresolved edge loads now degrade safely.
+- Switched edge loading to bounded API fetches with explicit caps (`MAX_EDGE_LINKS_PER_PAGE = 50`, `MAX_EDGE_CATEGORIES_PER_PAGE = 30`) to avoid expensive long-tail link/category expansions.
+- Added guarded summary rendering in `main.py` via `get_page_summary()` so temporary summary fetch failures print `Summary unavailable.` instead of crashing.
+- Added a cap on random starter/destination page resolution attempts in `main.py` (`MAX_RANDOM_PAGE_ATTEMPTS = 25`) with graceful retry messaging when random lookup is temporarily unavailable.
+- Added regression tests covering timeout enforcement, safe summary fallback, bounded random lookup attempts, and resilient request/edge handling.
+
 ## Files Updated
 
 - `main.py`
@@ -171,7 +182,7 @@ python3 -m pytest
 
 Latest result:
 
-- `30 passed`
+- `46 passed`
 - `0 warnings`
 
 The latest suite run completed cleanly with no warnings.
@@ -182,3 +193,4 @@ Optional follow-up work could include:
 
 - additional tuning of the default cache policy values, currently a 7-day TTL, 1000 persistent rows, cleanup every 25 writes, 256 link-cache entries, and 512 embedding-cache entries, based on real-world usage
 - batching or throttling `last_accessed_at` writes further if cache read volume becomes high enough to justify it
+- optional tuning of runtime limits (`PATHFINDING_TIMEOUT_SECONDS`, `WIKIPEDIA_HTTP_TIMEOUT_SECONDS`, and random/edge caps) based on desired responsiveness vs path-finding depth
