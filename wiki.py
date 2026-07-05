@@ -14,10 +14,12 @@ warnings.filterwarnings(
 
 import wikipedia # https://wikipedia.readthedocs.io/en/latest/code.html#api
 import wikipedia.wikipedia as wikipedia_impl
+from wikipedia.exceptions import DisambiguationError, PageError, RedirectError, WikipediaException
 import json
 import sqlite3
 import spacy
 import time
+from requests.exceptions import RequestException
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -31,14 +33,17 @@ def _patched_beautiful_soup(markup: str, *args: Any, **kwargs: Any) -> Beautiful
 wikipedia_impl.BeautifulSoup = _patched_beautiful_soup
 
 MAX_PATH_LENGTH = 20
-MAX_SEARCH_STEPS = 100
-MAX_BRANCHES_PER_PAGE = 5
+MAX_SEARCH_STEPS = 300
+MAX_BRANCHES_PER_PAGE = 8
+EXPLORATORY_BRANCHES_PER_PAGE = 1
+PATHFINDING_TIMEOUT_SECONDS = 8.0
 CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_PERSISTENT_CACHE_ROWS = 1000
 CACHE_CLEANUP_WRITE_INTERVAL = 25
 MAX_LINK_CACHE_SIZE = 256
 MAX_EMBEDDING_CACHE_SIZE = 512
 CACHE_DB_PATH = "pages.db"
+MAX_PAGE_LOOKUP_CANDIDATES = 3
 
 Page = Any
 Embedding = Any
@@ -55,6 +60,16 @@ def encode_text(text: str) -> Embedding:
     """Encode text using spacy's sentence vectors"""
     doc = nlp(text)
     return doc.vector.reshape(1, -1)
+
+
+def _get_page_edges(page: Page) -> Optional[Dict[str, List[str]]]:
+    try:
+        return {
+            "links": list(page.links),
+            "categories": list(page.categories),
+        }
+    except (PageError, DisambiguationError, RedirectError, WikipediaException, RequestException, KeyError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def _current_timestamp() -> int:
@@ -114,8 +129,11 @@ def _touch_cached_page(cursor: sqlite3.Cursor, page_name: str, now: int) -> None
     )
 
 
-def _write_cached_page(cursor: sqlite3.Cursor, page_name: str, page: Page, now: int) -> None:
+def _write_cached_page(cursor: sqlite3.Cursor, page_name: str, page: Page, now: int) -> bool:
     serialized_edges = _serialize_page_edges(page)
+    if serialized_edges is None:
+        return False
+
     updated_rows = cursor.execute(
         """
         UPDATE pages
@@ -133,6 +151,7 @@ def _write_cached_page(cursor: sqlite3.Cursor, page_name: str, page: Page, now: 
             """,
             (page_name, serialized_edges, now, now),
         )
+    return True
 
 
 def _record_cache_write() -> None:
@@ -187,11 +206,11 @@ def _trim_cache(cache: Dict[Any, Any], max_size: int) -> None:
         del cache[oldest_key]
 
 
-def _serialize_page_edges(page: Page) -> str:
-    return json.dumps({
-        "links": page.links,
-        "categories": page.categories,
-    })
+def _serialize_page_edges(page: Page) -> Optional[str]:
+    page_edges = _get_page_edges(page)
+    if page_edges is None:
+        return None
+    return json.dumps(page_edges)
 
 
 def _get_cached_page_edges(page_name: str, cached_value: str, page_cache: PageCache) -> Dict[str, List[str]]:
@@ -209,27 +228,44 @@ def _get_cached_page_edges(page_name: str, cached_value: str, page_cache: PageCa
             "categories": [],
         }
 
-    return {
-        "links": page.links,
-        "categories": page.categories,
-    }
+    page_edges = _get_page_edges(page)
+    if page_edges is None:
+        return {
+            "links": parsed_value,
+            "categories": [],
+        }
+
+    return page_edges
 
 # TODO: Returns the Python page too often.
 def get_page(page_name: str) -> Optional[Page]:
     """Get a specific Wikipedia page by name"""
+    normalized_query = " ".join(page_name.strip().split())
+    if not normalized_query:
+        return None
+
     try:
-        return wikipedia.page(page_name, auto_suggest=False, redirect=False)
-    except:
+        return wikipedia.page(normalized_query, auto_suggest=False, redirect=False)
+    except (PageError, DisambiguationError, RedirectError, WikipediaException, RequestException, KeyError, ValueError, json.JSONDecodeError):
         pass
+
     try:
-        search_results = wikipedia.search(page_name)
+        search_results = wikipedia.search(normalized_query)
         if not search_results:
             return None
-        choice = search_results[0]
-        page = wikipedia.page(choice, auto_suggest=False, redirect=False)
-        return page
-    except:
+
+        for choice in search_results[:MAX_PAGE_LOOKUP_CANDIDATES]:
+            normalized_choice = " ".join(choice.strip().split())
+            if not normalized_choice:
+                continue
+            try:
+                return wikipedia.page(normalized_choice, auto_suggest=False, redirect=False)
+            except (PageError, DisambiguationError, RedirectError, WikipediaException, RequestException, KeyError, ValueError, json.JSONDecodeError):
+                continue
+    except (WikipediaException, RequestException, KeyError, ValueError, json.JSONDecodeError):
         return None
+
+    return None
 
 def get_page_links_with_cache(
     page_name: str,
@@ -266,7 +302,12 @@ def _load_page_links(page_name: str, page_cache: PageCache, link_cache: LinkCach
             link_cache[cache_key] = []
             _trim_cache(link_cache, MAX_LINK_CACHE_SIZE)
             return []
-        _write_cached_page(cursor, page_name, page, now)
+        wrote_row = _write_cached_page(cursor, page_name, page, now)
+        if not wrote_row:
+            conn.close()
+            link_cache[cache_key] = []
+            _trim_cache(link_cache, MAX_LINK_CACHE_SIZE)
+            return []
         conn.commit()
         cached_page = _fetch_cached_page_row(cursor, page_name)
         wrote_cache = True
@@ -278,24 +319,24 @@ def _load_page_links(page_name: str, page_cache: PageCache, link_cache: LinkCach
     if _is_cache_entry_stale(cached_page, now):
         page = _get_page_cached(page_name, page_cache)
         if page is not None:
-            edge_data = {
-                "links": page.links,
-                "categories": page.categories,
-            }
-            _write_cached_page(cursor, page_name, page, now)
-            wrote_cache = True
+            page_edges = _get_page_edges(page)
+            if page_edges is not None:
+                edge_data = page_edges
+                wrote_cache = _write_cached_page(cursor, page_name, page, now)
+            else:
+                _touch_cached_page(cursor, page_name, now)
         else:
             _touch_cached_page(cursor, page_name, now)
         conn.commit()
     elif not isinstance(cached_value, dict):
         page = _get_page_cached(page_name, page_cache)
         if page is not None:
-            edge_data = {
-                "links": page.links,
-                "categories": page.categories,
-            }
-            _write_cached_page(cursor, page_name, page, now)
-            wrote_cache = True
+            page_edges = _get_page_edges(page)
+            if page_edges is not None:
+                edge_data = page_edges
+                wrote_cache = _write_cached_page(cursor, page_name, page, now)
+            else:
+                _touch_cached_page(cursor, page_name, now)
         else:
             _touch_cached_page(cursor, page_name, now)
         conn.commit()
@@ -341,10 +382,18 @@ def _get_summary_embedding(page_name: str, page_cache: PageCache, embedding_cach
     cache_key = ("summary", page_name)
     if cache_key not in embedding_cache:
         page = _get_page_cached(page_name, page_cache)
-        if page is None or not page.summary:
+        if page is None:
             embedding_cache[cache_key] = None
         else:
-            embedding_cache[cache_key] = encode_text(page.summary)
+            try:
+                summary = page.summary
+            except (PageError, DisambiguationError, RedirectError, WikipediaException, RequestException, KeyError, ValueError, json.JSONDecodeError):
+                summary = ""
+
+            if not summary:
+                embedding_cache[cache_key] = None
+            else:
+                embedding_cache[cache_key] = encode_text(summary)
         _trim_cache(embedding_cache, MAX_EMBEDDING_CACHE_SIZE)
     return embedding_cache[cache_key]
 
@@ -356,33 +405,53 @@ def _get_title_embedding(page_name: str, embedding_cache: EmbeddingCache) -> Emb
     return embedding_cache[cache_key]
 
 def _score_candidate(page_name: str, target_embedding: Optional[Embedding], page_cache: PageCache, embedding_cache: EmbeddingCache) -> float:
-    candidate_embedding = _get_title_embedding(page_name, embedding_cache)
+    candidate_embedding = _get_summary_embedding(page_name, page_cache, embedding_cache)
+    if candidate_embedding is None:
+        candidate_embedding = _get_title_embedding(page_name, embedding_cache)
     if candidate_embedding is None or target_embedding is None:
         return float("-inf")
     return cosine_similarity(candidate_embedding, target_embedding)[0][0]
 
-def _find_short_path(
+
+def _select_next_paths(scored_candidates: List[Tuple[float, List[str]]]) -> List[List[str]]:
+    if not scored_candidates:
+        return []
+
+    selected: List[List[str]] = [path for _, path in scored_candidates[:MAX_BRANCHES_PER_PAGE]]
+    remaining = scored_candidates[MAX_BRANCHES_PER_PAGE:]
+    if remaining and EXPLORATORY_BRANCHES_PER_PAGE > 0:
+        sample_size = min(EXPLORATORY_BRANCHES_PER_PAGE, len(remaining))
+        for offset in range(sample_size):
+            index = int((offset + 1) * len(remaining) / (sample_size + 1))
+            selected.append(remaining[index][1])
+
+    return selected
+
+
+def _find_short_path_with_reason(
     start_page_name: str,
     end_page_name: str,
     page_cache: PageCache,
     link_cache: LinkCache,
     embedding_cache: EmbeddingCache,
     ignore_categories: bool,
-) -> Optional[List[str]]:
-    """Find a valid path using a bounded greedy best-first search."""
-
+) -> Tuple[Optional[List[str]], str]:
     if start_page_name == end_page_name:
-        return [start_page_name]
+        return [start_page_name], "start_equals_end"
 
     target_embedding = _get_summary_embedding(end_page_name, page_cache, embedding_cache)
     if target_embedding is None:
-        return None
+        target_embedding = _get_title_embedding(end_page_name, embedding_cache)
 
     frontier: List[Tuple[float, List[str]]] = [(0.0, [start_page_name])]
     visited = {start_page_name}
     steps = 0
+    start_time = time.monotonic()
 
     while frontier and steps < MAX_SEARCH_STEPS:
+        if time.monotonic() - start_time >= PATHFINDING_TIMEOUT_SECONDS:
+            return None, "time_budget_exhausted"
+
         best_index = max(range(len(frontier)), key=lambda index: (frontier[index][0], frontier[index][1]))
         _, path = frontier.pop(best_index)
         current_page = path[-1]
@@ -393,7 +462,7 @@ def _find_short_path(
 
         links = _load_page_links(current_page, page_cache, link_cache, ignore_categories)
         if end_page_name in links:
-            return path + [end_page_name]
+            return path + [end_page_name], "found_path"
 
         scored_candidates: List[Tuple[float, List[str]]] = []
         for link in links:
@@ -404,13 +473,36 @@ def _find_short_path(
 
         scored_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
 
-        for score, next_path in scored_candidates[:MAX_BRANCHES_PER_PAGE]:
-            frontier.append((score, next_path))
+        for next_path in _select_next_paths(scored_candidates):
+            frontier.append((0.0 if not next_path else _score_candidate(next_path[-1], target_embedding, page_cache, embedding_cache), next_path))
             visited.add(next_path[-1])
 
         steps += 1
 
-    return None
+    if steps >= MAX_SEARCH_STEPS:
+        return None, "step_budget_exhausted"
+    if not frontier:
+        return None, "frontier_exhausted"
+    return None, "search_terminated"
+
+def _find_short_path(
+    start_page_name: str,
+    end_page_name: str,
+    page_cache: PageCache,
+    link_cache: LinkCache,
+    embedding_cache: EmbeddingCache,
+    ignore_categories: bool,
+) -> Optional[List[str]]:
+    """Find a valid path using a bounded greedy best-first search."""
+    path, _ = _find_short_path_with_reason(
+        start_page_name,
+        end_page_name,
+        page_cache,
+        link_cache,
+        embedding_cache,
+        ignore_categories,
+    )
+    return path
 
 
 def find_short_path(

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from main import main
+from main import main, normalize_page_input
 
 @pytest.fixture
 def mock_wiki_functions():
@@ -116,11 +116,13 @@ def test_main_handles_missing_paths(mock_wiki_functions, mock_input, capsys):
     assert "Length: 0" in output
 
 def test_main_handles_invalid_user_page(mock_wiki_functions, mock_input, capsys):
-    """Test that invalid user pages do not crash the game."""
-    mock_input.side_effect = ['', '', 'NotARealPage', 'q']
+    """Test that repeated invalid user pages do not crash the game."""
+    mock_input.side_effect = ['', '', 'NotARealPage', 'StillNotReal', 'NopeAgain', 'q']
     mock_wiki_functions['get_page'].side_effect = [
         mock_wiki_functions['get_page'].return_value,
         mock_wiki_functions['get_page'].return_value,
+        None,
+        None,
         None,
     ]
 
@@ -128,6 +130,43 @@ def test_main_handles_invalid_user_page(mock_wiki_functions, mock_input, capsys)
 
     output = capsys.readouterr().out
     assert "Could not find a page for that input." in output
+    assert output.count("Could not find a page for that input.") == 3
+
+
+def test_main_retries_then_accepts_valid_user_page(mock_wiki_functions, mock_input, capsys):
+    """Test that user destination input is retried until a valid page is found."""
+    valid_page = MagicMock()
+    valid_page.title = "Ocean"
+    valid_page.summary = "Ocean summary"
+
+    mock_input.side_effect = ['', '', 'bad-page', 'Ocean', 'q']
+    mock_wiki_functions['get_page'].side_effect = [
+        mock_wiki_functions['get_page'].return_value,
+        mock_wiki_functions['get_page'].return_value,
+        None,
+        valid_page,
+    ]
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Try another page name." in output
+    assert "Your page is: Ocean" in output
+
+
+def test_main_normalizes_user_page_input(mock_wiki_functions, mock_input):
+    """Test that user page lookup receives normalized input."""
+    mock_input.side_effect = ['', '', '  Nintendo    Switch   2  ', 'q']
+
+    main()
+
+    user_lookup_call = mock_wiki_functions['get_page'].call_args_list[2]
+    assert user_lookup_call.args == ('Nintendo Switch 2',)
+
+
+def test_normalize_page_input():
+    assert normalize_page_input("  Nintendo    Switch   2  ") == "Nintendo Switch 2"
+    assert normalize_page_input("\t\n  ") == ""
 
 def test_main_hard_mode_passes_flag(mock_wiki_functions, mock_input):
     """Test that hard mode selection is passed through to both path searches."""

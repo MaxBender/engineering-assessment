@@ -5,6 +5,8 @@ import nltk
 import spacy
 from typing import Any, List, Optional
 
+MAX_DESTINATION_LOOKUP_ATTEMPTS = 3
+
 def get_random_page(common_words: List[str]) -> Any:
     for _ in range(len(common_words)):
         page = get_page(random.choice(common_words))
@@ -22,6 +24,32 @@ def print_path_result(label: str, path: Optional[List[str]]) -> int:
     print(f"\n -> ".join(path))
     print(f"Length: {len(path)}\n")
     return len(path)
+
+
+def normalize_page_input(user_input: str) -> str:
+    return " ".join(user_input.strip().split())
+
+
+def prompt_for_user_page(max_attempts: int = MAX_DESTINATION_LOOKUP_ATTEMPTS) -> Optional[Any]:
+    for attempt in range(max_attempts):
+        print("What would you like your page to be page?")
+        user_page_name = normalize_page_input(input())
+
+        if not user_page_name:
+            print("Please enter a page name.\n")
+            continue
+
+        user_page = get_page(user_page_name)
+        if user_page is not None:
+            return user_page
+
+        print("Could not find a page for that input.")
+        if attempt < max_attempts - 1:
+            print("Try another page name.\n")
+        else:
+            print()
+
+    return None
 
 def main() -> None:
     print("\n\n🥓 Welcome to WikiBacon! 🥓\n")
@@ -48,11 +76,8 @@ def main() -> None:
         print(f"The computer's page is: {computer_page.title}\n")
         print(f"Summary: {computer_page.summary[:500]}...\n")
 
-        print("What would you like your page to be page?")
-        user_page_name = input()
-        user_page = get_page(user_page_name)
+        user_page = prompt_for_user_page()
         if user_page is None:
-            print("Could not find a page for that input.\n")
             print("\n\nPlay again? Hit Enter for another round, or type 'q' to quit")
             cmd = input()
             if cmd == "q":
