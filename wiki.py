@@ -29,6 +29,7 @@ nlp = spacy.load("en_core_web_sm")
 conn = sqlite3.connect("pages.db")
 cursor = conn.cursor()
 cursor.execute("CREATE TABLE IF NOT EXISTS pages (name TEXT, links TEXT)")
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_pages_name ON pages(name)")
 conn.commit()
 
 def encode_text(text: str) -> Embedding:
@@ -53,8 +54,16 @@ def get_page(page_name: str) -> Optional[Page]:
     except:
         return None
 
-def get_page_links_with_cache(page_name: str) -> List[str]:
-    return _load_page_links(page_name, {}, {})
+def get_page_links_with_cache(
+    page_name: str,
+    page_cache: Optional[PageCache] = None,
+    link_cache: Optional[LinkCache] = None,
+) -> List[str]:
+    if page_cache is None:
+        page_cache = {}
+    if link_cache is None:
+        link_cache = {}
+    return _load_page_links(page_name, page_cache, link_cache)
 
 def _get_page_cached(page_name: str, page_cache: PageCache) -> Optional[Page]:
     if page_name not in page_cache:
@@ -182,12 +191,20 @@ def _find_short_path(
     return None
 
 
-def find_short_path(start_page: Page, end_page: Page) -> Optional[List[str]]:
-    page_cache = {
-        start_page.title: start_page,
-        end_page.title: end_page,
-    }
-    link_cache = {}
-    embedding_cache = {}
+def find_short_path(
+    start_page: Page,
+    end_page: Page,
+    page_cache: Optional[PageCache] = None,
+    link_cache: Optional[LinkCache] = None,
+    embedding_cache: Optional[EmbeddingCache] = None,
+) -> Optional[List[str]]:
+    if page_cache is None:
+        page_cache = {}
+    page_cache[start_page.title] = start_page
+    page_cache[end_page.title] = end_page
+    if link_cache is None:
+        link_cache = {}
+    if embedding_cache is None:
+        embedding_cache = {}
 
     return _find_short_path(start_page.title, end_page.title, page_cache, link_cache, embedding_cache)

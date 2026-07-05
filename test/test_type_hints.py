@@ -32,6 +32,8 @@ def test_wiki_public_function_type_hints():
     links_hints = get_type_hints(wiki.get_page_links_with_cache)
     assert links_hints == {
         "page_name": str,
+        "page_cache": Optional[Dict[str, Optional[Any]]],
+        "link_cache": Optional[Dict[str, List[str]]],
         "return": List[str],
     }
 
@@ -45,6 +47,9 @@ def test_wiki_public_function_type_hints():
     assert path_hints == {
         "start_page": Any,
         "end_page": Any,
+        "page_cache": Optional[Dict[str, Optional[Any]]],
+        "link_cache": Optional[Dict[str, List[str]]],
+        "embedding_cache": Optional[Dict[Tuple[str, str], Optional[Any]]],
         "return": Optional[List[str]],
     }
 

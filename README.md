@@ -1,16 +1,17 @@
 # Engineering Assessment Notes
 
-This repository was updated to address the highest-value issues in the assessment first, then to complete three of the lower-risk minor improvements.
+This repository was updated to address the highest-value issues in the assessment first, then to complete the remaining high-ROI minor improvements.
 
 ## Summary
 
-The work completed in this exercise focused on five areas:
+The work completed in this exercise focused on six areas:
 
 1. Fixing biased page selection and removing the accidental overuse of `Python (programming language)`.
 2. Fixing pathfinding correctness issues so returned paths are valid and unreachable cases fail cleanly.
 3. Improving meta-category filtering and expanding regression coverage.
 4. Adding targeted type hints and type-hint regression coverage.
 5. Suppressing the reproducible runtime warning noise in the local environment.
+6. Improving cache reuse across both path searches in a round.
 
 ## Changelog
 
@@ -78,6 +79,20 @@ The work completed in this exercise focused on five areas:
 - Added a narrow, early warning filter in `wiki.py` so this specific warning no longer pollutes test and runtime output.
 - Preserved the rest of the warning surface instead of globally muting unrelated warnings.
 
+### 9. Caching improvements
+
+- Expanded the public cache API in `wiki.py` so `get_page_links_with_cache()` can reuse caller-supplied page and link caches.
+- Expanded `find_short_path()` so callers can optionally supply page, link, and embedding caches.
+- Updated `main.py` to create round-scoped caches once and reuse them across both the computer search and the user search.
+- Added a SQLite index on `pages.name` to improve persistent cache lookups.
+- Kept the change intentionally small by improving cache lifetime and reuse rather than redesigning the persistence layer.
+
+### 10. Additional cache regression coverage
+
+- Added tests that verify caller-supplied caches are honored by `get_page_links_with_cache()`.
+- Added tests that verify repeated searches can reuse supplied caches without changing path correctness.
+- Updated the type-hint regression coverage so the cache-aware public signatures remain locked in.
+
 ## Files Updated
 
 - `main.py`
@@ -97,7 +112,7 @@ python3 -m pytest
 
 Latest result:
 
-- `19 passed`
+- `21 passed`
 - `0 warnings`
 
 The latest suite run completed cleanly with no warnings.

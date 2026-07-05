@@ -186,6 +186,40 @@ def test_get_page_links_with_cache_filters_meta_categories(mock_wikipedia_librar
     assert "Wikipedia articles needing cleanup" not in links
     assert "Filtering Source" not in links
 
+def test_get_page_links_with_cache_uses_supplied_caches(mock_wikipedia_library):
+    page_cache = {}
+    link_cache = {}
+
+    links = wiki.get_page_links_with_cache("Filtering Source", page_cache, link_cache)
+
+    assert link_cache["Filtering Source"] == links
+    if "Filtering Source" in page_cache:
+        assert page_cache["Filtering Source"].title == "Filtering Source"
+
+    second_links = wiki.get_page_links_with_cache("Filtering Source", page_cache, link_cache)
+    assert second_links == links
+    assert len(link_cache) == 1
+
+def test_find_short_path_reuses_supplied_caches(mock_wikipedia_library):
+    start_page = wiki.get_page("Blueberry")
+    end_page = wiki.get_page("Ocean")
+
+    page_cache = {
+        start_page.title: start_page,
+        end_page.title: end_page,
+    }
+    link_cache = {}
+    embedding_cache = {}
+
+    first_path = wiki.find_short_path(start_page, end_page, page_cache, link_cache, embedding_cache)
+    cache_sizes = (len(page_cache), len(link_cache), len(embedding_cache))
+
+    second_path = wiki.find_short_path(start_page, end_page, page_cache, link_cache, embedding_cache)
+
+    assert first_path == ["Blueberry", "Blue Things", "Ocean"]
+    assert second_path == first_path
+    assert (len(page_cache), len(link_cache), len(embedding_cache)) == cache_sizes
+
 def test_link_through_categories(mock_wikipedia_library):
     start_page = wiki.get_page("Blueberry")
     end_page = wiki.get_page("Ocean")

@@ -62,10 +62,18 @@ def main() -> None:
 
         print("Calculating Bacon paths...\n")
 
-        computer_path = find_short_path(start_page, computer_page)
+        page_cache = {
+            start_page.title: start_page,
+            computer_page.title: computer_page,
+            user_page.title: user_page,
+        }
+        link_cache = {}
+        embedding_cache = {}
+
+        computer_path = find_short_path(start_page, computer_page, page_cache, link_cache, embedding_cache)
         computer_score = print_path_result("Computer's path", computer_path)
 
-        user_path = find_short_path(start_page, user_page)
+        user_path = find_short_path(start_page, user_page, page_cache, link_cache, embedding_cache)
         user_score = print_path_result("Your path", user_path)
 
         if computer_score > user_score:
