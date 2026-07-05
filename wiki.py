@@ -1,16 +1,33 @@
 import warnings
+from bs4 import BeautifulSoup, GuessedAtParserWarning
+
 warnings.filterwarnings(
     "ignore",
     message="urllib3 v2 only supports OpenSSL 1.1.1+",
     category=Warning,
 )
+warnings.filterwarnings(
+    "ignore",
+    category=GuessedAtParserWarning,
+    module=r"wikipedia\.wikipedia",
+)
 
 import wikipedia # https://wikipedia.readthedocs.io/en/latest/code.html#api
+import wikipedia.wikipedia as wikipedia_impl
 import json
 import sqlite3
 import spacy
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def _patched_beautiful_soup(markup: str, *args: Any, **kwargs: Any) -> BeautifulSoup:
+    if not args and "features" not in kwargs:
+        kwargs["features"] = "html.parser"
+    return BeautifulSoup(markup, *args, **kwargs)
+
+
+wikipedia_impl.BeautifulSoup = _patched_beautiful_soup
 
 MAX_PATH_LENGTH = 20
 MAX_SEARCH_STEPS = 100

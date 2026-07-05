@@ -4,14 +4,15 @@ This repository was updated to address the highest-value issues in the assessmen
 
 ## Summary
 
-The work completed in this exercise focused on six areas:
+The work completed in this exercise focused on seven areas:
 
 1. Fixing biased page selection and removing the accidental overuse of `Python (programming language)`.
 2. Fixing pathfinding correctness issues so returned paths are valid and unreachable cases fail cleanly.
 3. Improving meta-category filtering and expanding regression coverage.
 4. Adding targeted type hints and type-hint regression coverage.
-5. Suppressing the reproducible runtime warning noise in the local environment.
+5. Eliminating the reproducible runtime warning noise in the local environment.
 6. Improving cache reuse across both path searches in a round.
+7. Reproducing and patching the third-party HTML parser warning path.
 
 ## Changelog
 
@@ -75,11 +76,17 @@ The work completed in this exercise focused on six areas:
 ### 8. Warning suppression
 
 - Investigated the warning TODO by reproducing runtime fetches through both `wiki.get_page()` and the underlying `wikipedia` library.
-- Determined that the reproducible warning in this environment was not an HTML parser warning, but a local `urllib3` / `LibreSSL` warning.
-- Added a narrow, early warning filter in `wiki.py` so this specific warning no longer pollutes test and runtime output.
-- Preserved the rest of the warning surface instead of globally muting unrelated warnings.
+- Determined that the reproducible warning in this environment included a local `urllib3` / `LibreSSL` warning and a third-party BeautifulSoup parser warning in the `wikipedia` package's disambiguation flow.
+- Added a narrow, early warning filter in `wiki.py` so the local `urllib3` warning no longer pollutes test and runtime output.
 
-### 9. Caching improvements
+### 9. HTML parser warning investigation and fix
+
+- Added a standalone diagnostic at `test/diagnostic_html_parser_warning.py` to reproduce the `wikipedia` package's disambiguation parsing path without depending on live Wikipedia responses.
+- Confirmed the parser warning source was `BeautifulSoup(html)` inside `wikipedia.wikipedia`, where no explicit parser was provided.
+- Patched the app locally by overriding the `wikipedia.wikipedia` module's `BeautifulSoup` symbol so it defaults to `features="html.parser"`.
+- Verified that the diagnostic script still reaches the disambiguation path and raises the expected `DisambiguationError`, but no longer emits `GuessedAtParserWarning`.
+
+### 10. Caching improvements
 
 - Expanded the public cache API in `wiki.py` so `get_page_links_with_cache()` can reuse caller-supplied page and link caches.
 - Expanded `find_short_path()` so callers can optionally supply page, link, and embedding caches.
@@ -87,7 +94,7 @@ The work completed in this exercise focused on six areas:
 - Added a SQLite index on `pages.name` to improve persistent cache lookups.
 - Kept the change intentionally small by improving cache lifetime and reuse rather than redesigning the persistence layer.
 
-### 10. Additional cache regression coverage
+### 11. Additional cache regression coverage
 
 - Added tests that verify caller-supplied caches are honored by `get_page_links_with_cache()`.
 - Added tests that verify repeated searches can reuse supplied caches without changing path correctness.
@@ -98,6 +105,7 @@ The work completed in this exercise focused on six areas:
 - `main.py`
 - `wiki.py`
 - `test/test_type_hints.py`
+- `test/diagnostic_html_parser_warning.py`
 - `test/test_main.py`
 - `test/test_wiki.py`
 - `README.md`
@@ -119,6 +127,7 @@ The latest suite run completed cleanly with no warnings.
 
 ## Remaining Work
 
-Minor TODOs not yet implemented include:
+Optional follow-up work could include:
 
-- any additional cache-layer cleanup beyond the current per-search improvements
+- additional cache-layer cleanup beyond the current per-search improvements
+- a hard mode that ignores categories entirely, if that game variant is still desired
